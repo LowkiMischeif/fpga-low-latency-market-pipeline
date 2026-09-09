@@ -1,0 +1,22 @@
+# Vivado / xsim
+build/
+xsim.dir/
+.Xil/
+*.jou
+*.log
+*.pb
+*.wdb
+*.str
+
+# Verilator
+obj_dir/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+
+# Generated traces (regenerate with scripts/generate_events.py)
+tb/traces/*.hex
+tb/traces/*.bin
