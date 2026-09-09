@@ -1,0 +1,15 @@
+{
+  "verible": {
+    "command": "verible-verilog-ls",
+    "args": [
+      "--rules_config_search"
+    ],
+    "extensionToLanguage": {
+      ".sv": "systemverilog",
+      ".svh": "systemverilog",
+      ".v": "verilog"
+    },
+    "startupTimeout": 10000,
+    "diagnostics": true
+  }
+}

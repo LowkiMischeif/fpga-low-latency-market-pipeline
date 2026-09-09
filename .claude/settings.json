@@ -1,0 +1,13 @@
+{
+  "extraKnownMarketplaces": {
+    "fpga-market-pipeline-local": {
+      "source": {
+        "source": "directory",
+        "path": "./.claude/plugins"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "verible-lsp@fpga-market-pipeline-local": true
+  }
+}

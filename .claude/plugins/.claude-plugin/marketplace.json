@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "fpga-market-pipeline-local",
+  "description": "Local plugins for the fpga-low-latency-market-pipeline repo.",
+  "owner": {
+    "name": "fpga-low-latency-market-pipeline"
+  },
+  "plugins": [
+    {
+      "name": "verible-lsp",
+      "description": "SystemVerilog/Verilog language server (Verible) for .sv/.svh/.v files.",
+      "source": "./verible-lsp",
+      "category": "development"
+    }
+  ]
+}
