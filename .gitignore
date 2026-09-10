@@ -21,3 +21,6 @@ __pycache__/
 # Generated traces (regenerate with scripts/generate_events.py)
 tb/traces/*.hex
 tb/traces/*.bin
+
+# Agent-local reviewer notes, not project source
+.claude/agent-memory/

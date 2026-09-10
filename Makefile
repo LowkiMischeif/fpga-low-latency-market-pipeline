@@ -16,8 +16,11 @@ SYNTH_TOP ?= market_pipeline_top
 all: lint pytest
 
 # Package must lead the file list: market_pkg.sv defines every width/enum/struct.
+# No --top-module: market_pipeline_top does not exist until the integration
+# stage, and forcing a top that is absent fails the lint outright. Verilator
+# infers the top from what is present; the package still leads the list.
 lint:
-	verilator --lint-only -Wall --top-module market_pipeline_top rtl/market_pkg.sv $(filter-out rtl/market_pkg.sv,$(RTL))
+	verilator --lint-only -Wall rtl/market_pkg.sv $(filter-out rtl/market_pkg.sv,$(RTL))
 
 sim:
 	$(VIVADO) -mode batch -notrace -source scripts/run_sim.tcl -tclargs $(TOP)
