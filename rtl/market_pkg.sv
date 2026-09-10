@@ -129,7 +129,88 @@ package market_pkg;
   // ---------------------------------------------------------------------
   localparam int LAT_DECODE     = 1;
   localparam int LAT_SEQCHK     = 1;
-  localparam int LATENCY_CYCLES = LAT_DECODE + LAT_SEQCHK;
+  localparam int LAT_TOB        = 1;
+  localparam int LAT_FEATURE    = 2;
+  localparam int LATENCY_CYCLES = LAT_DECODE + LAT_SEQCHK + LAT_TOB + LAT_FEATURE;
+
+  // ---------------------------------------------------------------------
+  // Top of book.
+  //
+  // Only the best level per side is tracked. A cleared side is marked by its
+  // valid bit, never by a sentinel price -- zero is a legal price in Q14.2,
+  // so "no bid" and "a bid at 0.00" must stay distinguishable.
+  // ---------------------------------------------------------------------
+  typedef struct packed {
+    logic               bid_valid;
+    logic [PRICE_W-1:0] bid_price;
+    logic [QTY_W-1:0]   bid_qty;
+    logic               ask_valid;
+    logic [PRICE_W-1:0] ask_price;
+    logic [QTY_W-1:0]   ask_qty;
+  } book_t;
+
+  // ---------------------------------------------------------------------
+  // Features.
+  //
+  // spread is signed: a crossed book (bid above ask) is representable rather
+  // than wrapping to a huge positive number.
+  // imbalance is signed Q1.14 -- (Q_bid - Q_ask) / (Q_bid + Q_ask), so it is
+  // mathematically bounded to [-1, +1] and IMB_W carries one integer bit so
+  // both endpoints are representable.
+  // ---------------------------------------------------------------------
+  localparam int SPREAD_W   = PRICE_W + 1;
+  localparam int MOM_W      = PRICE_W + 1;
+  localparam int IMB_FRAC_W = 14;
+  localparam int IMB_W      = IMB_FRAC_W + 2;
+  localparam int IMB_ONE    = 1 <<< IMB_FRAC_W;
+
+  // ponytail: momentum is the change in midprice since that symbol's previous
+  // book update -- one step, held per symbol. Deeper history means a
+  // MOMENTUM_LAG-deep shift register per symbol; add it if the policy engine
+  // turns out to need a longer horizon.
+  localparam int MOMENTUM_LAG = 1;
+
+  typedef struct packed {
+    logic signed [SPREAD_W-1:0] spread;
+    logic        [PRICE_W-1:0]  mid;
+    logic signed [IMB_W-1:0]    imbalance;
+    logic signed [MOM_W-1:0]    momentum;
+    logic                       book_empty;   // one or both sides absent
+  } feature_t;
+
+  // ---------------------------------------------------------------------
+  // Reciprocal ROM for the imbalance divide.
+  //
+  // A divider is the one piece of real arithmetic this design cannot avoid,
+  // and a restoring divider either costs a cycle per quotient bit or becomes
+  // the critical path. Instead the denominator is normalised to [2**16,
+  // 2**17), the 8 bits below its leading one index this table, and the result
+  // is one multiply and a shift:
+  //
+  //   den   = Q_bid + Q_ask                       (DEN_W bits)
+  //   sh    = 16 - floor(log2(den))
+  //   dn    = den << sh                           in [2**16, 2**17)
+  //   idx   = dn[15:8]
+  //   recip = ROM[idx] ~= 2**30 / (2**16 + idx*256 + 128)
+  //   imb   = (Q_bid - Q_ask) * recip >>> (16 - sh)
+  //
+  // Indexing the bucket midpoint bounds the relative error at 128/65536, so
+  // ~0.2% of full scale -- below what the downstream fixed-point policy can
+  // resolve. Values land in [8200, 16352], hence RECIP_W = 16.
+  // ---------------------------------------------------------------------
+  localparam int DEN_W       = QTY_W + 1;
+  localparam int RECIP_IDX_W = 8;
+  localparam int RECIP_ROM_N = 1 << RECIP_IDX_W;
+  localparam int RECIP_W     = 16;
+
+  // Built by a constant function rather than a generated file: the table is
+  // one expression, and a checked-in .mem would be a second source of truth
+  // for it. tb_market_pkg asserts it is non-zero and monotonically decreasing.
+  function automatic logic [RECIP_W-1:0] recip_rom(input logic [RECIP_IDX_W-1:0] idx);
+    int unsigned den_mid;
+    den_mid = 65536 + (int'(idx) * 256) + 128;
+    return RECIP_W'((1 << 30) / den_mid);
+  endfunction
 
 endpackage
 /* verilator lint_on UNUSEDPARAM */
