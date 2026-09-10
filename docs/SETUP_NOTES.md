@@ -90,8 +90,8 @@ Tier licence against that MAC and it keeps working.
 Verify the two agree:
 
 ```sh
-ip link show eth0 | grep -oE 'link/ether [0-9a-f:]{17}'   # 10:ff:e0:c6:f9:db
-grep -oE 'HOSTID=[^ ;]*' ~/.Xilinx/Xilinx.lic             # 10FFE0C6F9DB
+ip link show eth0 | grep -oE 'link/ether [0-9a-f:]{17}'
+grep -oE 'HOSTID=[^ ;]*' ~/.Xilinx/Xilinx.lic
 ```
 
 Strip the colons from the first; they must match. Then confirm the toolchain
@@ -113,3 +113,16 @@ make sim TOP=tb_market_pkg              # PASS
 
 Mirrored networking is the one that holds because it removes the virtual MAC
 from the picture entirely rather than trying to pin it.
+
+## Simulator licensing
+
+`xsim` needs a Vivado Simulator feature checkout in addition to the Basic Tier
+package. The free Basic Tier covers it for the parts this project targets, and
+the first line of a working run says so:
+
+```
+INFO: [Common 17-3922] A valid Vivado Design Suite BASIC license has been detected.
+```
+
+If synthesis works but simulation does not, that is a separate feature
+checkout failing, not the node-lock problem above.

@@ -23,7 +23,7 @@ The project is finished when all nine goals below hold simultaneously on
 |---|---|---|
 | 1 | Events decode correctly; gaps and malformed events are flagged | Randomized replay testbench passes |
 | 2 | A trace flows end to end through decode → book → features | End-to-end testbench passes |
-| 3 | Input-to-decision latency is fixed | `analyze_latency.py` histogram with min = mean = max |
+| 3 | Input-to-decision latency is fixed | Histogram with min = mean = max — from `tb/tb_fixed_latency.sv` while the pipeline is partial, and from `analyze_latency.py` over telemetry once the full pipeline exists |
 | 4 | Two policy configurations produce demonstrably different behaviour | Replay comparison table; identical structural latency in both |
 | 5 | Risk limits work | Directed tests: position limit, quantity limit, spread guard, kill switch, saturation |
 | 6 | The design closes timing on the target part | `results/BUILD_SCOPE.md` generated from a real post-route run |
@@ -288,7 +288,7 @@ at any other price is not representable and is ignored rather than guessed at.
 
 | Event | Bid side | Ask side |
 |---|---|---|
-| `ADD` | `price > best_bid` → replace price and size; `price == best_bid` → `size += qty` (saturating) | mirror with `<` |
+| `ADD` | `qty == 0` → **no effect**; `price > best_bid` → replace price and size; `price == best_bid` → `size += qty` (saturating) | mirror with `<` |
 | `CANCEL` | `price == best_bid` → clear the side | mirror |
 | `TRADE` | `price == best_bid` → `size -= qty` (floor at 0); size reaching 0 clears the side | mirror |
 
@@ -297,6 +297,19 @@ price other than the best, have **no effect**. That is a real limitation of a
 top-of-book model and it is the reason this is stated rather than assumed: a
 cancel at a level we do not track cannot be honoured, and pretending otherwise
 would corrupt the size.
+
+**Zero-quantity `ADD`.** An `ADD` carrying `qty == 0` has no effect on the
+book at all. Without this rule such an event at a better price would replace a
+real, sized best level with a phantom zero-size level: `feature_engine` would
+then see one side at zero and the other with size, so `book_empty` stays clear
+and imbalance computes to exactly -1.0 or +1.0 — the largest-magnitude value
+the policy engine can receive — from an event that carried no size. The
+generator produces `qty == 0` (it draws from the full field range) and there is
+no `bad_qty` flag, so nothing upstream filters it.
+
+The invariant this preserves is worth stating: **a valid book side always has
+non-zero size.** `TRADE` already clears a side when its size reaches zero, so
+with this rule the two together make `bid_valid` imply `bid_qty > 0`.
 
 **Empty state.** A cleared side is a distinct empty sentinel, not price zero —
 zero is a legal price in Q14.2. Reset clears every symbol to empty. The
@@ -321,18 +334,32 @@ zero is a legal price in Q14.2. Reset clears every symbol to empty. The
   den         = Q_bid + Q_ask                  (17 bits)
   norm, shift = clz_normalise(den)
   recip       = RECIP_ROM[norm[15:8]]          (256 x 16)
-  imbalance   = ((Q_bid - Q_ask) * recip) >>> shift
+  imbalance   = ((Q_bid - Q_ask) * recip) >>> (16 - shift)
   ```
 
-  Worst-case error is about 0.4% of full scale, which is below what the
-  downstream fixed-point policy can resolve. One ROM plus one multiply fits
-  inside `LAT_FEATURE = 2` on the slowest Artix-7 speed grade. A 10-bit index
-  was rejected as more precise than the policy can use, on a path that is
-  already the stage's longest; a 6-bit index at ~1.6% error was rejected as
-  large enough to matter once the policy weights multiply it.
+  **Measured worst error: 33/16384 of full scale (0.2014%)**, at
+  `Q_bid = 65, Q_ask = 0`. That figure comes from the exhaustive sweep in
+  `scripts/test_imbalance_model.py`, not from an analytic bound — the naive
+  `128/65536 = 0.1953%` bucket-midpoint argument is *not* a bound, because it
+  ignores two floor operations: the ROM entry truncates `2**30 / den_mid`, and
+  the final `>>>` floors. The real worst case exceeds it. Quote the measured
+  number.
+
+  One ROM plus one multiply fits inside `LAT_FEATURE = 2` on the slowest
+  Artix-7 speed grade. A 10-bit index was rejected as more precise than the
+  policy can use, on a path that is already the stage's longest; a 6-bit index
+  at roughly 1.6% was rejected as large enough to matter once the policy
+  weights multiply it.
   **Divide-by-zero (empty book, `Q_bid + Q_ask == 0`) returns a defined
   neutral zero**, never an X, and sets a `book_empty` flag so the policy layer
   can tell "balanced" from "no data".
+
+  **The result must be clamped to +/-1.0.** Imbalance is mathematically
+  bounded to that range, but the approximation overshoots it: rounding to a
+  bucket midpoint makes the reciprocal too large whenever the low index bits
+  exceed 128. Measured maximum pre-saturation value is **16415** at
+  `Q_bid = 32895, Q_ask = 0`, against `IMB_ONE = 16384`. Without the clamp the
+  policy engine would see an imbalance greater than 1.0.
 - Momentum: signed difference between the current midprice and the midprice
   `MOMENTUM_LAG` updates ago, held in a small shift register sized by a named
   constant. Fixed depth, fixed latency, saturating.
@@ -492,8 +519,8 @@ MAJOR findings fixed before merge.
 | Branch | Contents |
 |---|---|
 | `feat/decode-validate` | `market_pkg`, `event_decoder`, `sequence_checker`, `generate_events.py`, `tb_event_decoder`, `tb/assertions.sv`, CI guards removed |
-| `feat/book-features` | `top_of_book`, `feature_engine`, `analyze_latency.py` |
-| `feat/policy-risk` | `policy_engine`, `risk_gate`, register bus, `train_policy.py`, `export_config.py` |
+| `feat/book-features` | `top_of_book`, `feature_engine` |
+| `feat/policy-risk` | `policy_engine`, `risk_gate`, register bus, `train_policy.py`, `export_config.py`, `analyze_latency.py` |
 | `feat/integration-timing` | `market_pipeline_top` **including the single reset synchronizer (§3.3)**, full XDC with I/O delays plus a recovery/removal check on the synchronized reset, timing closure, five docs, README |
 
 `LATENCY_CYCLES` grows across all four as a running sum, so the stated number
