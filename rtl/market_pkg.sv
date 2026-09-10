@@ -117,10 +117,10 @@ package market_pkg;
   //   LAT_SEQCHK         1  sequence_checker  gap / stale classification
   //   LAT_TOB            1  top_of_book       best bid/ask update
   //   LAT_FEATURE        2  feature_engine    spread, imbalance
-  //   LAT_POLICY         2  policy_engine     MAC tree + compare    [planned]
-  //   LAT_RISK           1  risk_gate         limit checks          [planned]
+  //   LAT_POLICY         2  policy_engine     MAC tree + compare
+  //   LAT_RISK           1  risk_gate         limit checks
   //   ------------  ------
-  //   LATENCY_CYCLES     5  <- sum of stages implemented today
+  //   LATENCY_CYCLES     8  <- sum of stages implemented today, all of them
   //
   // Stages marked [planned] are not yet in rtl/ and contribute nothing. When
   // a stage lands, its constant and its row here are added in the same commit
@@ -131,7 +131,11 @@ package market_pkg;
   localparam int LAT_SEQCHK     = 1;
   localparam int LAT_TOB        = 1;
   localparam int LAT_FEATURE    = 2;
-  localparam int LATENCY_CYCLES = LAT_DECODE + LAT_SEQCHK + LAT_TOB + LAT_FEATURE;
+  localparam int LAT_POLICY     = 2;
+  localparam int LAT_RISK       = 1;
+  localparam int LATENCY_CYCLES = LAT_DECODE + LAT_SEQCHK + LAT_TOB
+                                + LAT_FEATURE + LAT_POLICY + LAT_RISK;
+
 
   // ---------------------------------------------------------------------
   // Top of book.
@@ -164,11 +168,15 @@ package market_pkg;
   localparam int IMB_W      = IMB_FRAC_W + 2;
   localparam int IMB_ONE    = 1 <<< IMB_FRAC_W;
 
-  // ponytail: momentum is the change in midprice since that symbol's previous
-  // book update -- one step, held per symbol. Deeper history means a
-  // MOMENTUM_LAG-deep shift register per symbol; add it if the policy engine
-  // turns out to need a longer horizon.
-  localparam int MOMENTUM_LAG = 1;
+  // Momentum is the change in midprice since that symbol's previous book
+  // update: one step, one register per symbol.
+  //
+  // There was a MOMENTUM_LAG constant here. It was referenced nowhere in rtl/
+  // or tb/, so changing it silently did nothing -- a knob that is not wired to
+  // anything is worse than no knob, because the next person will turn it. If
+  // the policy engine turns out to need a longer horizon, that is a
+  // MOMENTUM_LAG-deep shift register per symbol and it can be added then, with
+  // a test that proves the depth matters.
 
   typedef struct packed {
     logic signed [SPREAD_W-1:0] spread;
@@ -211,6 +219,117 @@ package market_pkg;
     den_mid = 65536 + (int'(idx) * 256) + 128;
     return RECIP_W'((1 << 30) / den_mid);
   endfunction
+
+  // ---------------------------------------------------------------------
+  // Policy configuration.
+  //
+  // Weights are signed Q3.12: range about +/-8, resolution 1/4096. That is
+  // the ONLY place scaling lives -- the features keep their natural units
+  // (spread and momentum in Q14.2 ticks, imbalance in Q1.14) and each weight
+  // absorbs the conversion. Normalising the features first would cost a
+  // divide or a shift per feature on the pipeline's widest path and buy
+  // nothing the offline tuner cannot do for free.
+  //
+  // The tuner in scripts/train_policy.py searches in floating point and
+  // scripts/export_config.py quantises to exactly these formats; the same
+  // constants are parsed out of this file by the Python side, so the two
+  // cannot drift silently.
+  // ---------------------------------------------------------------------
+  localparam int W_W       = 16;
+  localparam int W_FRAC_W  = 12;
+  localparam int SCORE_W   = 32;
+
+  typedef struct packed {
+    logic signed [W_W-1:0]     w0;          // constant term, score units
+    logic signed [W_W-1:0]     w_spread;
+    logic signed [W_W-1:0]     w_imbalance;
+    logic signed [W_W-1:0]     w_momentum;
+    logic signed [SCORE_W-1:0] theta_buy;
+    logic signed [SCORE_W-1:0] theta_sell;
+    logic        [QTY_W-1:0]   order_qty;   // size this policy would send
+  } policy_cfg_t;
+
+  // ---------------------------------------------------------------------
+  // Risk configuration and outcomes.
+  // ---------------------------------------------------------------------
+  localparam int POS_W = 24;   // signed net position, wider than any limit
+
+  typedef struct packed {
+    logic        [POS_W-2:0]   max_long;      // magnitude, so unsigned
+    logic        [POS_W-2:0]   max_short;
+    logic        [QTY_W-1:0]   max_order_qty;
+    logic signed [SPREAD_W-1:0] max_spread;   // widest tradeable spread
+    logic                      kill;          // 1 = reject everything
+  } risk_cfg_t;
+
+  typedef enum logic [1:0] {
+    DEC_HOLD = 2'd0,
+    DEC_BUY  = 2'd1,
+    DEC_SELL = 2'd2
+  } decision_e;
+
+  // Why a decision was suppressed. RSN_NONE means it was not: a HOLD that the
+  // policy genuinely chose is RSN_NONE, a BUY the risk gate refused is not.
+  // Telemetry needs to tell those apart.
+  typedef enum logic [3:0] {
+    RSN_NONE       = 4'd0,
+    RSN_KILL       = 4'd1,
+    RSN_MALFORMED  = 4'd2,   // bad_type / bad_side / bad_rsv from the decoder
+    RSN_SEQUENCE   = 4'd3,   // gap or stale
+    RSN_BOOK_EMPTY = 4'd4,
+    RSN_SPREAD     = 4'd5,   // wider than max_spread, and the book is real
+    RSN_MAX_QTY    = 4'd6,
+    RSN_MAX_LONG   = 4'd7,
+    RSN_MAX_SHORT  = 4'd8
+  } reason_e;
+
+  typedef struct packed {
+    decision_e                 decision;
+    reason_e                   reason;
+    logic        [QTY_W-1:0]   order_qty;
+    logic signed [SCORE_W-1:0] score;
+    logic signed [POS_W-1:0]   position;   // net position AFTER this decision
+  } decision_t;
+
+  // Saturating signed accumulate in score units. Every accumulation in the
+  // policy path uses this: a weighted sum that wraps would turn a strong sell
+  // signal into a strong buy.
+  function automatic logic signed [SCORE_W-1:0] score_sat_add(
+      input logic signed [SCORE_W-1:0] a, input logic signed [SCORE_W-1:0] b);
+    logic signed [SCORE_W:0] sum;
+    sum = {a[SCORE_W-1], a} + {b[SCORE_W-1], b};
+    if (sum[SCORE_W] != sum[SCORE_W-1])
+      return sum[SCORE_W] ? {1'b1, {(SCORE_W-1){1'b0}}}    // most negative
+                          : {1'b0, {(SCORE_W-1){1'b1}}};   // most positive
+    return sum[SCORE_W-1:0];
+  endfunction
+
+  // ---------------------------------------------------------------------
+  // Configuration register map.
+  //
+  // A plain synchronous write port -- not PCIe, not AXI. Writes land in a
+  // SHADOW copy and only become active when a commit is taken at an event
+  // boundary, so a decision is never built from half of one weight set and
+  // half of another. See config_regs.sv.
+  // ---------------------------------------------------------------------
+  localparam int CFG_ADDR_W = 5;
+  localparam int CFG_DATA_W = 32;
+
+  typedef enum logic [CFG_ADDR_W-1:0] {
+    CFG_W0            = 5'd0,
+    CFG_W_SPREAD      = 5'd1,
+    CFG_W_IMBALANCE   = 5'd2,
+    CFG_W_MOMENTUM    = 5'd3,
+    CFG_THETA_BUY     = 5'd4,
+    CFG_THETA_SELL    = 5'd5,
+    CFG_ORDER_QTY     = 5'd6,
+    CFG_MAX_LONG      = 5'd7,
+    CFG_MAX_SHORT     = 5'd8,
+    CFG_MAX_ORDER_QTY = 5'd9,
+    CFG_MAX_SPREAD    = 5'd10,
+    CFG_KILL          = 5'd11,
+    CFG_COMMIT        = 5'd12   // write 1 to arm; takes effect at a boundary
+  } cfg_addr_e;
 
 endpackage
 /* verilator lint_on UNUSEDPARAM */

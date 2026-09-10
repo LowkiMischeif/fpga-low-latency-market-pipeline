@@ -178,33 +178,25 @@ Each stage's constant is defined only once that stage exists in `rtl/`, so the
 constant always equals what the RTL can demonstrate, and the assertion that
 checks it moves in the same commit.
 
-```systemverilog
-// Input-to-decision latency in clock cycles, for non-stalled traffic
-// (m_ready held high). Every stage registers its output exactly once.
-//
-//   constant      cycles  stage             contribution
-//   ------------  ------  ----------------  ----------------------------
-//   LAT_DECODE         1  event_decoder     field slice + encoding checks
-//   LAT_SEQCHK         1  sequence_checker  gap / stale classification
-//   LAT_TOB            1  top_of_book       best bid/ask update
-//   LAT_FEATURE        2  feature_engine    spread, imbalance
-//   LAT_POLICY         2  policy_engine     MAC tree + compare       [planned]
-//   LAT_RISK           1  risk_gate         limit checks             [planned]
-//   ------------  ------
-//   LATENCY_CYCLES     5  <- sum of stages implemented today
-//
-// Stages marked [planned] are not yet in rtl/ and contribute nothing. When a
-// stage lands, its constant and its row here are added in the same commit as
-// the module, and tb/assertions.sv proves the new total.
-localparam int LAT_DECODE     = 1;
-localparam int LAT_SEQCHK     = 1;
-localparam int LATENCY_CYCLES = LAT_DECODE + LAT_SEQCHK;
-```
+**The authoritative table lives in `rtl/market_pkg.sv`, not here.** It was
+duplicated in both places and drifted: this section still claimed
+`LATENCY_CYCLES 5` with `[planned]` markers on `policy_engine` and `risk_gate`
+after both had landed, in the very section that states the rule they broke. One
+copy, in the file the RTL actually reads.
 
-The design target is 8 cycles. That number appears nowhere in the RTL until
-the RTL actually achieves it.
+What this section does state, because it is a rule rather than a value:
 
----
+- Every stage registers its output exactly once, and its cycle count is a
+  named `LAT_*` constant.
+- `LATENCY_CYCLES` is the sum of those constants for stages present in `rtl/`.
+  A planned stage contributes nothing and has no constant.
+- A stage's constant, its row in the `market_pkg.sv` comment table, and the
+  module itself land in one commit.
+- `tb/tb_fixed_latency.sv` measures the total end to end and fails if it is not
+  `LATENCY_CYCLES`; `scripts/mutants.txt` carries mutants that inflate a stage
+  constant and that collapse a stage, and both are killed.
+
+The design target was 8 cycles and the RTL now achieves it.
 
 ## 5. Module specifications
 
@@ -354,15 +346,26 @@ zero is a legal price in Q14.2. Reset clears every symbol to empty. The
   neutral zero**, never an X, and sets a `book_empty` flag so the policy layer
   can tell "balanced" from "no data".
 
+  **One gating rule covers every feature:** `book_empty == 1` implies
+  `spread`, `mid`, `imbalance` and `momentum` are all zero. No feature is
+  gated on a different condition. Two rules that agree only by accident are
+  still two rules, and an earlier version had `spread` and `mid` gated on
+  "both sides valid" while `imbalance` and `momentum` were gated on
+  `book_empty` — which diverge when two valid sides both rest zero size.
+
   **The result must be clamped to +/-1.0.** Imbalance is mathematically
   bounded to that range, but the approximation overshoots it: rounding to a
   bucket midpoint makes the reciprocal too large whenever the low index bits
   exceed 128. Measured maximum pre-saturation value is **16415** at
   `Q_bid = 32895, Q_ask = 0`, against `IMB_ONE = 16384`. Without the clamp the
   policy engine would see an imbalance greater than 1.0.
-- Momentum: signed difference between the current midprice and the midprice
-  `MOMENTUM_LAG` updates ago, held in a small shift register sized by a named
-  constant. Fixed depth, fixed latency, saturating.
+- Momentum: signed difference between the current midprice and that symbol's
+  midprice at its previous book update. One step, held per symbol in a
+  midprice register plus a validity bit (the first update for a symbol has no
+  predecessor and reports zero momentum, not a jump from zero),
+  fixed latency. A deeper horizon would be a shift register per symbol; it is
+  not built until the policy engine demonstrates it needs one, and there is
+  deliberately no unwired depth constant standing in for it.
 
 ### 5.5 `policy_engine.sv` — 2 cycles
 
@@ -372,13 +375,59 @@ register bus. `BUY` if `score > theta_buy`, `SELL` if `score < theta_sell`,
 else `HOLD`.
 
 Structural latency is independent of the weight values — that is the whole
-point of the "AI customization" claim and it is asserted, not assumed.
+point of the "AI customization" claim.
+
+It holds **by construction**: the configuration reaches the adder tree only,
+and appears in no `valid`, `ready` or enable expression. It is **proven** by
+`tb/tb_policy_configs.sv`, which replays one trace under the two committed
+configurations in `tb/configs/` and requires the decisions to differ while the
+latency histograms match bucket for bucket. A mutant that routes a single
+config bit into the stall path is killed by that test.
+
+The configuration — weights, thresholds, order size **and the risk limits** —
+is captured into the pipeline at accept, so an event is scored and gated
+entirely by the snapshot active when it entered. A commit landing mid-flight
+cannot produce a decision assembled from two configurations. Carrying the risk
+limits through `policy_engine` rather than feeding `risk_gate` directly is what
+makes that true of the limits as well as the weights; atomic for half a
+configuration is not atomic.
+
+That snapshot is the mechanism. `config_regs`' commit boundary is defence in
+depth on top of it, and shadow-plus-commit is what makes a *batch* of register
+writes atomic — without it an event accepted between two writes would be scored
+with one new weight and three old ones.
+
+`tb/tb_policy_configs.sv` proves it: a third pass commits the second
+configuration mid-stream with the pipeline never drained, and requires every
+decision to match what config A or config B produced for that event, and never
+a mixture.
+
+**The score cannot reach the `SCORE_W` rail at these widths** — worst case is
+about 1.6e6 against a 2**31 limit — so the saturating accumulate is defensive
+rather than load-bearing. `tb_policy_engine` pins the achievable range and
+fails if it grows past a tenth of the rail, which is the point at which the
+saturation would start doing real work.
 
 ### 5.6 `risk_gate.sv` — 1 cycle
 
 Rejects with a reason code on: maximum long position, maximum short position,
 maximum order quantity, spread guard, kill switch, and any event carrying
-`gap`, `stale`, or a malformed flag from upstream. Reason codes are an enum in
+`gap`, `stale`, or a malformed flag from upstream.
+
+**The spread guard must be qualified by `!book_empty`.** Under §5.4's single
+gating rule an empty book reports `spread == 0`, which is the tightest spread
+representable and therefore passes any `reject if spread > X` test — the guard
+would be wide open exactly when there is no book to trade against. `spread == 0`
+is also what a genuinely locked book produces, so spread alone cannot separate
+"no market" from "locked market"; `book_empty` is the discriminator and the
+risk gate must read it.
+
+Note also what `book_empty` currently conflates: a genuinely empty book, a
+one-sided book with real resting size, and two valid sides at zero size. All
+three emit identical all-zero features, so a one-sided book with 5000 resting
+bids is bit-identical downstream to a reset book. If the policy engine turns
+out to need that distinction, the fix is to carry `bid_valid`/`ask_valid` in
+`feature_t` rather than to loosen the gating rule. Reason codes are an enum in
 `market_pkg.sv` and appear in telemetry.
 
 ### 5.7 `market_pipeline_top.sv`

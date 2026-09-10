@@ -1,0 +1,16 @@
+{
+  "name": "baseline",
+  "note": "HAND-CHOSEN, not trained. Spread-led: buy when the quoted spread is wide, sell when it is tight. Thresholds picked from the measured feature range of the test stimulus (spread 12..52). It exists to be a deliberately different policy from the trained one, on a different signal -- not as a tuner output.",
+  "w0": 0,
+  "w_spread": 1.0,
+  "w_imbalance": 0.0,
+  "w_momentum": 1.0,
+  "theta_buy": 40,
+  "theta_sell": 15,
+  "order_qty": 5,
+  "max_long": 1000000,
+  "max_short": 1000000,
+  "max_order_qty": 100,
+  "max_spread": 20000,
+  "kill": false
+}

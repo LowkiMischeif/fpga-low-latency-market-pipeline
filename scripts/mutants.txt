@@ -1,0 +1,85 @@
+# Mutation list. Format:  name @@ file @@ testbench @@ search @@ replace
+# A mutant that SURVIVES means the suite does not check that behaviour, and is
+# a finding rather than a curiosity -- the missing imbalance saturation clamp
+# survived the first run of this list and was a real hole.
+
+== top_of_book ==
+tob: ask better-direction flipped @@ rtl/top_of_book.sv @@ tb_top_of_book @@ (s_event.price < cur.ask_price) @@ (s_event.price > cur.ask_price)
+tob: qty_add does not saturate @@ rtl/top_of_book.sv @@ tb_top_of_book @@ return sum[QTY_W] ? {QTY_W{1'b1}} : sum[QTY_W-1:0]; @@ return sum[QTY_W-1:0];
+tob: qty_sub does not floor @@ rtl/top_of_book.sv @@ tb_top_of_book @@ return (b >= a) ? '0 : (a - b); @@ return a - b;
+tob: zero-qty ADD guard removed @@ rtl/top_of_book.sv @@ tb_top_of_book @@ EVT_ADD: if (s_event.qty != '0) begin @@ EVT_ADD: begin
+tob: book indexed at a fixed symbol @@ rtl/top_of_book.sv @@ tb_top_of_book @@ assign cur = book[s_event.symbol]; @@ assign cur = book[0];
+
+== feature_engine ==
+feat: mid not halved @@ rtl/feature_engine.sv @@ tb_feature_engine @@ s_book.ask_price}) >> 1) @@ s_book.ask_price}))
+feat: divide-by-zero not folded into empty @@ rtl/feature_engine.sv @@ tb_feature_engine @@ assign empty1 = !both_sides || (den == '0); @@ assign empty1 = !both_sides;
+feat: spread back on split gating @@ rtl/feature_engine.sv @@ tb_feature_engine @@   assign spread1 = empty1 @@   assign spread1 = !both_sides
+feat: mid back on split gating @@ rtl/feature_engine.sv @@ tb_feature_engine @@   assign mid1 = empty1 @@   assign mid1 = !both_sides
+feat: wrong reciprocal shift @@ rtl/feature_engine.sv @@ tb_feature_engine @@ prod2 >>> (16 - sh1_r) @@ prod2 >>> (15 - sh1_r)
+feat: imbalance high clamp removed @@ rtl/feature_engine.sv @@ tb_feature_engine @@ else if (shifted2 >  IMB_PROD_W'(IMB_ONE))      imb2 =  IMB_W'(IMB_ONE); @@ else if (1'b0) imb2 = IMB_W'(IMB_ONE);
+feat: imbalance low clamp removed @@ rtl/feature_engine.sv @@ tb_feature_engine @@ else if (shifted2 < -IMB_PROD_W'(IMB_ONE))      imb2 = -IMB_W'(IMB_ONE); @@ else if (1'b0) imb2 = -IMB_W'(IMB_ONE);
+feat: momentum ignores prev_valid @@ rtl/feature_engine.sv @@ tb_feature_engine @@ (empty1_r || !pv) @@ (empty1_r)
+feat: momentum history is global @@ rtl/feature_engine.sv @@ tb_feature_engine @@ assign pm = prev_mid[ev1.symbol]; @@ assign pm = prev_mid[0];
+feat: stale book advances history @@ rtl/feature_engine.sv @@ tb_feature_engine @@ v1 && advance && !stale1 && !empty1_r @@ v1 && advance && !empty1_r
+
+== policy_engine ==
+pol: constant term dropped @@ rtl/policy_engine.sv @@ tb_policy_engine @@ assign score2 = score_sat_add(scaled_sat2, SCORE_W'(w0_1)); @@ assign score2 = scaled_sat2;
+pol: buy comparison reversed @@ rtl/policy_engine.sv @@ tb_policy_engine @@ else if (score2 >  tbuy_1)       dec2 = DEC_BUY; @@ else if (score2 <  tbuy_1)       dec2 = DEC_BUY;
+pol: threshold is >= not > @@ rtl/policy_engine.sv @@ tb_policy_engine @@ else if (score2 >  tbuy_1)       dec2 = DEC_BUY; @@ else if (score2 >= tbuy_1)       dec2 = DEC_BUY;
+pol: scaling shift off by one @@ rtl/policy_engine.sv @@ tb_policy_engine @@ assign scaled2 = acc2 >>> W_FRAC_W; @@ assign scaled2 = acc2 >>> (W_FRAC_W-1);
+pol: imbalance term dropped @@ rtl/policy_engine.sv @@ tb_policy_engine @@ assign p_imb    = cfg.w_imbalance * s_feat.imbalance; @@ assign p_imb    = '0;
+pol: spread term dropped @@ rtl/policy_engine.sv @@ tb_policy_engine @@ assign p_spread = cfg.w_spread    * s_feat.spread; @@ assign p_spread = '0;
+pol: empty book still decides @@ rtl/policy_engine.sv @@ tb_policy_engine @@ if (ft1.book_empty)              dec2 = DEC_HOLD; @@ if (1'b0)                        dec2 = DEC_HOLD;
+# NOT LISTED, and deliberately: "pol: saturation clamp removed".
+# The score cannot reach the SCORE_W rail at these widths -- worst case is
+# about 1.6e6 against a 2**31 limit -- so the saturating accumulate is
+# defensive and no stimulus can distinguish it from a plain add. Listing it
+# would be listing a mutant nothing can kill. tb_policy_engine pins the
+# achievable range instead, and fails if it ever grows past a tenth of the
+# rail, which is when this mutant would become killable and belong here.
+
+== risk_gate ==
+# NOT LISTED: "risk: spread guard not qualified by book_empty".
+# The qualification is real and spec 5.6 requires it, but it is currently
+# SHADOWED by reason precedence: book_empty is tested before spread_bad, so an
+# empty book is already rejected as RSN_BOOK_EMPTY and never reaches the spread
+# test. Removing !book_empty therefore changes no output. It is defence in
+# depth against someone reordering that chain, and tb_risk_gate asserts the
+# observable property -- an empty book yields RSN_BOOK_EMPTY, never RSN_SPREAD.
+risk: empty book not rejected @@ rtl/risk_gate.sv @@ tb_risk_gate @@ else if (s_feat.book_empty)  reason_c = RSN_BOOK_EMPTY; @@ else if (1'b0)              reason_c = RSN_BOOK_EMPTY;
+risk: kill switch ignored @@ rtl/risk_gate.sv @@ tb_risk_gate @@ else if (cfg.kill)           reason_c = RSN_KILL; @@ else if (1'b0)               reason_c = RSN_KILL;
+risk: max long not enforced @@ rtl/risk_gate.sv @@ tb_risk_gate @@ assign over_long  = (s_decision == DEC_BUY)  && (next_pos > lim_long); @@ assign over_long  = 1'b0;
+risk: max short not enforced @@ rtl/risk_gate.sv @@ tb_risk_gate @@ assign over_short = (s_decision == DEC_SELL) && (next_pos < lim_short); @@ assign over_short = 1'b0;
+# The mutant has to put the unsigned expression INLINE in the comparison. A
+# declared `logic signed` variable carries its own signedness, so merely
+# changing how lim_short is computed stores the same bits and reads back the
+# same value -- that version of this mutant was a no-op and survived for that
+# reason, not because the suite was weak.
+risk: short limit compared unsigned @@ rtl/risk_gate.sv @@ tb_risk_gate @@ assign over_short = (s_decision == DEC_SELL) && (next_pos < lim_short); @@ assign over_short = (s_decision == DEC_SELL) && (next_pos < -POS_W'({1'b0, cfg.max_short}));
+risk: long limit compared unsigned @@ rtl/risk_gate.sv @@ tb_risk_gate @@ assign over_long  = (s_decision == DEC_BUY)  && (next_pos > lim_long); @@ assign over_long  = (s_decision == DEC_BUY)  && (next_pos > POS_W'({1'b0, cfg.max_long}));
+risk: sequence flags ignored @@ rtl/risk_gate.sv @@ tb_risk_gate @@ else if (seq_bad)            reason_c = RSN_SEQUENCE; @@ else if (1'b0)               reason_c = RSN_SEQUENCE;
+risk: malformed flags ignored @@ rtl/risk_gate.sv @@ tb_risk_gate @@ else if (malformed)          reason_c = RSN_MALFORMED; @@ else if (1'b0)               reason_c = RSN_MALFORMED;
+risk: rejected trade still moves position @@ rtl/risk_gate.sv @@ tb_risk_gate @@ assign pos_c = (decision_c == DEC_BUY)  ? (position + qty_ext) @@ assign pos_c = (s_decision == DEC_BUY)  ? (position + qty_ext)
+risk: max order qty not enforced @@ rtl/risk_gate.sv @@ tb_risk_gate @@ else if (s_order_qty > cfg.max_order_qty) reason_c = RSN_MAX_QTY; @@ else if (1'b0) reason_c = RSN_MAX_QTY;
+
+== config_regs ==
+cfg: writes go live without a commit @@ rtl/config_regs.sv @@ tb_config_regs @@ if (commit_pending && boundary) begin @@ if (1'b1) begin
+cfg: commit ignores the boundary @@ rtl/config_regs.sv @@ tb_config_regs @@ if (commit_pending && boundary) begin @@ if (commit_pending) begin
+cfg: reset does not arm the kill switch @@ rtl/config_regs.sv @@ tb_config_regs @@       risk_cfg.kill  <= 1'b1; @@       risk_cfg.kill  <= 1'b0;
+
+== latency and configuration independence ==
+lat: package claims one cycle too many @@ rtl/market_pkg.sv @@ tb_fixed_latency @@ localparam int LAT_TOB        = 1; @@ localparam int LAT_TOB        = 2;
+lat: policy claims one cycle too many @@ rtl/market_pkg.sv @@ tb_policy_configs @@ localparam int LAT_POLICY     = 2; @@ localparam int LAT_POLICY     = 3;
+lat: feature_engine collapsed to one cycle @@ rtl/feature_engine.sv @@ tb_fixed_latency @@       m_valid <= v1; @@       m_valid <= s_valid;
+# NOT LISTED: "cfg-safe: commit boundary always open".
+# Forcing cfg_boundary to 1 changes nothing observable, and the reason is worth
+# knowing: atomicity comes from the per-event SNAPSHOT, not from the boundary.
+# policy_engine captures the weights, thresholds, order size and the risk
+# limits into stage 1 on the accept edge, all from one clock edge, so an event
+# is scored by one configuration generation no matter when the shadow swaps.
+# The boundary is defence in depth for a future where that snapshot changes.
+# What IS load-bearing is shadow-plus-commit, which makes a BATCH of writes
+# atomic -- "cfg: writes go live without a commit" is listed and is killed.
+risk: position check wraps at POS_W @@ rtl/risk_gate.sv @@ tb_risk_gate @@ localparam int CHK_W = POS_W + 1; @@ localparam int CHK_W = POS_W;
+risk: policy HOLD still gets a reason @@ rtl/risk_gate.sv @@ tb_risk_gate @@ if      (s_decision == DEC_HOLD) reason_c = RSN_NONE; @@ if      (1'b0)                  reason_c = RSN_NONE;
+cfg-indep: a config bit reaches the stall path @@ rtl/policy_engine.sv @@ tb_policy_configs @@ assign advance = m_ready || !v2; @@ assign advance = (m_ready || !v2) && !(cfg.w_spread[10] && v2);

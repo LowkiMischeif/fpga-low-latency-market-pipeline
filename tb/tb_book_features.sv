@@ -8,16 +8,21 @@
 //     reached top_of_book or feature_engine; the only book and feature
 //     coverage was directed, one event at a time, with m_ready nailed high.
 //
-//   * The stimulus is generated HERE rather than read from
-//     scripts/generate_events.py, because that generator draws price from a
-//     uniform 16-bit range. Under a uniform price the best bid converges to
-//     the largest price drawn and no CANCEL or TRADE ever matches it again, so
-//     a generated trace exercises exactly one row of the spec's update table
-//     (ADD better / ADD worse) and never the other five. This file draws price
-//     from a small per-symbol ladder so equal-price accumulation, cancel-at-
-//     best, trade-at-best and trade-to-zero actually occur -- and then it
-//     FAILS the run if they did not, rather than reporting a green replay that
-//     covered one sixth of the table.
+//   * Two stimulus sources, one oracle. By default this file builds its own
+//     per-symbol ladder. With +HEX= it replays a trace from
+//     scripts/generate_events.py instead, through the same reference model and
+//     the same coverage floors.
+//
+//     The generator used to draw price from a uniform 16-bit range, under
+//     which the best bid converges to the largest price drawn and no CANCEL or
+//     TRADE ever matches it again -- a generated trace reached exactly one row
+//     of the update table. It now keeps its own book model and aims at resting
+//     levels, and the replay mode is what proves it: the floors below apply
+//     unchanged, so if the generator stops reaching a rule, the run fails.
+//
+//     The self-generated ladder is still the default because it is
+//     independent of the generator -- a bug in both would otherwise go
+//     unnoticed.
 //
 //   * The reference model is derived from the spec's tables (sequence
 //     condition/action, the top-of-book update matrix, the feature
@@ -32,7 +37,21 @@
 module tb_book_features;
   import market_pkg::*;
 
-  localparam int N_EVENTS = 3000;
+  localparam int MAX_EVENTS = 8192;
+  int n_events = 3000;      // overridden by +NEVENTS in replay mode
+
+  // Replay mode: drive this pipeline from a trace produced by
+  // scripts/generate_events.py instead of the self-generated ladder.
+  //
+  //   make sim TOP=tb_book_features PLUSARGS="HEX=tb/traces/random.hex NEVENTS=2000"
+  //
+  // This is what makes the generator's book model worth having: without a
+  // testbench pointed at the trace, the generator was shaping stimulus for a
+  // pipeline that stops two stages before the book. The reference model below
+  // is identical in both modes -- it derives everything from the raw 64-bit
+  // word -- so the same coverage floors and the same scoreboards apply.
+  bit    replay = 1'b0;
+  string hex_path;
   // Must match STALE_RESYNC_LIMIT in rtl/sequence_checker.sv.
   localparam int STALE_RESYNC_LIMIT = 16;
   // Imbalance is an approximation. The spec bounds the relative error at
@@ -112,18 +131,18 @@ module tb_book_features;
   // ------------------------------------------------------------------
   // Stimulus, and the reference model for it.
   // ------------------------------------------------------------------
-  logic [EVENT_W-1:0] word     [0:N_EVENTS-1];
-  market_event_t      ref_event[0:N_EVENTS-1];
-  event_err_t         ref_err  [0:N_EVENTS-1];
-  book_t              ref_book [0:N_EVENTS-1];
-  bit                 ref_bstale[0:N_EVENTS-1];
+  logic [EVENT_W-1:0] word     [0:MAX_EVENTS-1];
+  market_event_t      ref_event[0:MAX_EVENTS-1];
+  event_err_t         ref_err  [0:MAX_EVENTS-1];
+  book_t              ref_book [0:MAX_EVENTS-1];
+  bit                 ref_bstale[0:MAX_EVENTS-1];
   // Features. Imbalance is kept as the EXACT value; the DUT is scored against
   // it with IMB_TOL, because the DUT deliberately approximates.
-  logic signed [SPREAD_W-1:0] ref_spread[0:N_EVENTS-1];
-  logic        [PRICE_W-1:0]  ref_mid   [0:N_EVENTS-1];
-  logic signed [MOM_W-1:0]    ref_mom   [0:N_EVENTS-1];
-  bit                         ref_empty [0:N_EVENTS-1];
-  int                         ref_imb   [0:N_EVENTS-1];
+  logic signed [SPREAD_W-1:0] ref_spread[0:MAX_EVENTS-1];
+  logic        [PRICE_W-1:0]  ref_mid   [0:MAX_EVENTS-1];
+  logic signed [MOM_W-1:0]    ref_mom   [0:MAX_EVENTS-1];
+  bit                         ref_empty [0:MAX_EVENTS-1];
+  int                         ref_imb   [0:MAX_EVENTS-1];
 
   longint unsigned ref_gap_count, ref_stale_count, ref_missed_total,
                    ref_bad_count, ref_resync_count;
@@ -191,6 +210,21 @@ module tb_book_features;
     return ((bq - aq) * IMB_ONE) / (bq + aq);
   endfunction
 
+  task automatic load_or_configure();
+    int n;
+    if ($value$plusargs("HEX=%s", hex_path)) begin
+      replay = 1'b1;
+      if (!$value$plusargs("NEVENTS=%d", n)) n = 2000;
+      n_events = n;
+      if (n_events > MAX_EVENTS)
+        $fatal(1, "FAIL: NEVENTS %0d exceeds MAX_EVENTS %0d", n_events, MAX_EVENTS);
+      $readmemh(hex_path, word);
+      $display("INFO: replaying %0d events from %s", n_events, hex_path);
+    end else begin
+      $display("INFO: self-generated ladder stimulus, %0d events", n_events);
+    end
+  endtask
+
   task automatic build_stimulus_and_reference();
     logic [SEQ_W-1:0]        rx, expect_ref;
     logic signed [SEQ_W-1:0] diff;
@@ -220,7 +254,7 @@ module tb_book_features;
       bk[i] = '0; pm[i] = '0; pv[i] = 1'b0; was_empty[i] = 1'b1;
     end
 
-    for (int i = 0; i < N_EVENTS; i++) begin
+    for (int i = 0; i < n_events; i++) begin
       // --- pick the encoding defects first: whether the event is trusted
       // decides what it is allowed to do to the sequence expectation.
       roll = rand_range(gen_rng, 0, 999);
@@ -274,6 +308,22 @@ module tb_book_features;
       else                               rx = expect_ref;
 
       if (i < 2) rx = expect_ref;   // the prologue must not be gapped or stale
+
+      // In replay the event comes straight off the trace; every draw above is
+      // discarded. The reference model past this point is unchanged, which is
+      // the whole reason this works -- it reads the raw word either way.
+      if (replay) begin
+        t   = word[i][TYPE_LSB   +: TYPE_W];
+        sym = word[i][SYMBOL_LSB +: SYMBOL_W];
+        sd  = word[i][SIDE_LSB   +: SIDE_W];
+        px  = word[i][PRICE_LSB  +: PRICE_W];
+        qy  = word[i][QTY_LSB    +: QTY_W];
+        rx  = word[i][SEQ_LSB    +: SEQ_W];
+        rv  = word[i][RSV_LSB    +: RSV_W];
+        r_btype = !is_valid_type(t);
+        r_bside = !is_valid_side(sd);
+        r_brsv  = (rv != '0);
+      end
 
       // --- sequence classification, straight from the spec's table
       diff    = $signed(rx - expect_ref);
@@ -450,7 +500,7 @@ module tb_book_features;
     rst_n = 1'b1;
     @(posedge clk);
 
-    while (sent < N_EVENTS) begin
+    while (sent < n_events) begin
       if (rand_range(drv_rng, 0, 3) == 0) begin
         @(negedge clk);
         s_valid = 1'b0;
@@ -505,9 +555,9 @@ module tb_book_features;
 
   always_ff @(posedge clk) begin
     if (rst_n && b_valid && b_ready) begin
-      if (b_recvd >= N_EVENTS) begin
+      if (b_recvd >= n_events) begin
         errors++;
-        $error("FAIL: extra book output beyond %0d events", N_EVENTS);
+        $error("FAIL: extra book output beyond %0d events", n_events);
       end else begin
         if (b_event !== ref_event[b_recvd]) begin
           errors++;
@@ -540,9 +590,9 @@ module tb_book_features;
   always_ff @(posedge clk) begin
     int got_imb, err_imb;
     if (rst_n && m_valid && m_ready) begin
-      if (m_recvd >= N_EVENTS) begin
+      if (m_recvd >= n_events) begin
         errors++;
-        $error("FAIL: extra feature output beyond %0d events", N_EVENTS);
+        $error("FAIL: extra feature output beyond %0d events", n_events);
       end else begin
         if (m_event !== ref_event[m_recvd]) begin
           errors++;
@@ -601,9 +651,10 @@ module tb_book_features;
     gen_rng = seed ^ 32'hA5A5_1234;
     drv_rng = seed ^ 32'h9E37_79B9;
     bp_rng  = seed ^ 32'h5EED_BEEF;
-    $display("INFO: seed=%0d events=%0d", seed, N_EVENTS);
+    $display("INFO: seed=%0d events=%0d", seed, n_events);
     $display("INFO: reproduce with: make sim TOP=tb_book_features PLUSARGS=\"SEED=%0d\"",
              seed);
+    load_or_configure();
     build_stimulus_and_reference();
     $display("INFO: reference sequence totals gap=%0d stale=%0d missed=%0d bad=%0d resync=%0d",
              ref_gap_count, ref_stale_count, ref_missed_total, ref_bad_count,
@@ -614,12 +665,12 @@ module tb_book_features;
   initial begin
     int syms;
     wait (built);
-    wait (m_recvd == N_EVENTS);
+    wait (m_recvd == n_events);
     repeat (5) @(posedge clk);
 
-    if (b_recvd != N_EVENTS) begin
+    if (b_recvd != n_events) begin
       errors++;
-      $error("FAIL: book stage handed off %0d of %0d events", b_recvd, N_EVENTS);
+      $error("FAIL: book stage handed off %0d of %0d events", b_recvd, n_events);
     end
     if (gap_count !== ref_gap_count[CNT_W-1:0]) begin
       errors++; $error("FAIL: gap_count %0d, reference %0d", gap_count, ref_gap_count);
@@ -693,15 +744,15 @@ module tb_book_features;
 
     if (errors != 0)
       $fatal(1, "FAIL: %0d mismatches over %0d events (seed=%0d)",
-             errors, N_EVENTS, seed);
+             errors, n_events, seed);
     $display("PASS: tb_book_features -- %0d events, seed=%0d, worst imbalance error %0d/%0d",
-             N_EVENTS, seed, worst_imb_err, IMB_ONE);
+             n_events, seed, worst_imb_err, IMB_ONE);
     $finish;
   end
 
   initial begin
     #40000000;
     $fatal(1, "FAIL: timeout -- sent=%0d book=%0d feat=%0d of %0d",
-           sent, b_recvd, m_recvd, N_EVENTS);
+           sent, b_recvd, m_recvd, n_events);
   end
 endmodule
