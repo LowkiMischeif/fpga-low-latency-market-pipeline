@@ -94,6 +94,11 @@ t_latency = N_cycles * T_clock
 
 For example, 8 cycles at 250 MHz is 32 ns core pipeline latency — not full network-to-exchange latency.
 
+> **EXAMPLE ONLY — NOT THIS BOARD.** The 250 MHz / 32 ns figures above are illustrative arithmetic, not a
+> target. The committed constraint is a fixed 100 MHz oscillator on a Basys 3 (`xc7a35tcpg236-1`, the slowest
+> speed grade of the smallest Artix-7) with no MMCM, so this design's only possible rate is 100 MHz and an
+> 8-cycle pipeline is **80 ns**, not 32 ns. Do not copy 250 MHz or 32 ns into the README.
+
 ## One-month build plan
 
 ### Week 1 — RTL foundations and simulation
