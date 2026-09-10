@@ -1,8 +1,11 @@
 # fpga-low-latency-market-pipeline
 # Vivado is invoked in non-project (batch) mode; see scripts/*.tcl.
 
-PYTHON  ?= python
-VIVADO  ?= vivado
+# Prefer the repo venv when it exists; fall back to the system interpreter.
+PYTHON  ?= $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
+# The Vivado installer does not touch PATH, so fall back to the default
+# install location. See docs/SETUP_NOTES.md.
+VIVADO  ?= $(if $(shell command -v vivado 2>/dev/null),vivado,$(HOME)/Xilinx/2026.1/Vivado/bin/vivado)
 RTL     := $(wildcard rtl/*.sv)
 TB      := $(wildcard tb/*.sv)
 
