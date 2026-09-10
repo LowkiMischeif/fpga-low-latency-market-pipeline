@@ -8,6 +8,9 @@ PYTHON  ?= $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 VIVADO  ?= $(if $(shell command -v vivado 2>/dev/null),vivado,$(HOME)/Xilinx/2026.1/Vivado/bin/vivado)
 RTL     := $(wildcard rtl/*.sv)
 TB      := $(wildcard tb/*.sv)
+# Override per run: make sim TOP=tb_event_decoder
+TOP       ?= tb_market_pipeline_top
+SYNTH_TOP ?= market_pipeline_top
 
 .PHONY: all lint sim build pytest clean
 all: lint pytest
@@ -17,10 +20,10 @@ lint:
 	verilator --lint-only -Wall --top-module market_pipeline_top rtl/market_pkg.sv $(filter-out rtl/market_pkg.sv,$(RTL))
 
 sim:
-	$(VIVADO) -mode batch -notrace -source scripts/run_sim.tcl
+	$(VIVADO) -mode batch -notrace -source scripts/run_sim.tcl -tclargs $(TOP)
 
 build:
-	$(VIVADO) -mode batch -notrace -source scripts/build.tcl
+	$(VIVADO) -mode batch -notrace -source scripts/build.tcl -tclargs $(SYNTH_TOP)
 
 pytest:
 	$(PYTHON) -m pytest -q
