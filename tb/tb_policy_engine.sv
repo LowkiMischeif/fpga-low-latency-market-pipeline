@@ -163,6 +163,26 @@ module tb_policy_engine;
     check("saturating score is not X", !$isunknown(last_score));
     check("saturating score stays positive", last_score > 0);
 
+    // --- the score cannot reach the SCORE_W rail, and that is on purpose --
+    //
+    // Worst case: three products of |w| <= 2**15 and |feature| <= 2**16, so
+    // |acc| <= 3 * 2**31, and >>> W_FRAC_W leaves |scaled| <= 3 * 2**19, about
+    // 1.6e6. Adding |w0| <= 2**15 cannot approach 2**31. The saturating
+    // accumulate is therefore DEFENSIVE, not load-bearing at these widths.
+    //
+    // That is worth pinning rather than leaving implicit: it is the reason the
+    // "saturation clamp removed" mutant cannot be killed, and it stops being
+    // true the moment someone widens a weight or narrows SCORE_W. This vector
+    // fails if the achievable range ever grows past a tenth of the rail.
+    cfg = mk_cfg(32767, 32767, 32767, 32767, 1000000, -1000000, 7);
+    feed(65535, 0, 16384, 65535);
+    check("extreme positive score is well inside the rail",
+          last_score > 0 && last_score < (SCORE_W'(1) <<< (SCORE_W-4)));
+    cfg = mk_cfg(-32768, -32768, -32768, -32768, 1000000, -1000000, 7);
+    feed(65535, 0, 16384, 65535);
+    check("extreme negative score is well inside the rail",
+          last_score < 0 && last_score > -(SCORE_W'(1) <<< (SCORE_W-4)));
+
     // --- book_empty forces HOLD regardless of weights -------------------
     // Features are all zero when the book is empty, but an aggressive w0
     // would still fire. A decision on no book is not a decision.
