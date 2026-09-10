@@ -1,0 +1,16 @@
+{
+  "name": "tuned",
+  "note": "Imbalance-led, from scripts/train_policy.py --seed 7. Keys off book imbalance (range +/-16384) and barely on spread, so it reaches a different decision from baseline on most events.",
+  "w0": 0,
+  "w_spread": -0.25,
+  "w_imbalance": 1.75,
+  "w_momentum": 0.5,
+  "theta_buy": 400,
+  "theta_sell": -400,
+  "order_qty": 5,
+  "max_long": 1000000,
+  "max_short": 1000000,
+  "max_order_qty": 100,
+  "max_spread": 20000,
+  "kill": false
+}

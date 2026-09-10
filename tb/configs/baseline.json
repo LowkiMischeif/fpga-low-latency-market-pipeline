@@ -1,0 +1,16 @@
+{
+  "name": "baseline",
+  "note": "Spread-led, liquidity-provision shaped: buy when the quoted spread is wide, sell when it is tight. Ignores book imbalance entirely, so it trades on a different signal from tuned rather than trading less. Thresholds chosen from the measured feature range of the test stimulus (spread 12..52), not guessed.",
+  "w0": 0,
+  "w_spread": 1.0,
+  "w_imbalance": 0.0,
+  "w_momentum": 1.0,
+  "theta_buy": 40,
+  "theta_sell": 15,
+  "order_qty": 5,
+  "max_long": 1000000,
+  "max_short": 1000000,
+  "max_order_qty": 100,
+  "max_spread": 20000,
+  "kill": false
+}

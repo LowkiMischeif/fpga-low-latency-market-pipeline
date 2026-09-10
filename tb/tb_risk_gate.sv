@@ -128,6 +128,34 @@ module tb_risk_gate;
     check("SELL past max short rejected", last_d.decision === DEC_HOLD);
     check("max short reason",             last_d.reason === RSN_MAX_SHORT);
 
+    // --- signed limit comparisons -----------------------------------------
+    // The bug this pins: written with an inline unsigned right-hand side, SV
+    // evaluates the WHOLE comparison unsigned. Comparing a positive prospective
+    // position against a negative short limit then reads 10 < 2**24-50 as true
+    // and rejects a perfectly legal SELL. Two negatives compare correctly even
+    // unsigned, which is why the ordinary vectors above do not catch it -- it
+    // takes a position on the opposite side of zero from the limit.
+    do_reset();
+    cfg = mk_cfg(1000, 50, 1000, 500, 1'b0);
+    feed(DEC_BUY, 60, 100);
+    check("long 60 established", last_d.position === POS_W'(60));
+    feed(DEC_SELL, 50, 100);
+    check("SELL leaving a POSITIVE position is not a short breach",
+          last_d.decision === DEC_SELL);
+    check("no spurious MAX_SHORT", last_d.reason === RSN_NONE);
+    check("position now +10", last_d.position === POS_W'(10));
+
+    // Mirror: a BUY that leaves the position NEGATIVE is not a long breach.
+    do_reset();
+    cfg = mk_cfg(50, 1000, 1000, 500, 1'b0);
+    feed(DEC_SELL, 60, 100);
+    check("short 60 established", last_d.position === -POS_W'(60));
+    feed(DEC_BUY, 50, 100);
+    check("BUY leaving a NEGATIVE position is not a long breach",
+          last_d.decision === DEC_BUY);
+    check("no spurious MAX_LONG", last_d.reason === RSN_NONE);
+    check("position now -10", last_d.position === -POS_W'(10));
+
     // --- max order quantity ----------------------------------------------
     do_reset();
     cfg = mk_cfg(100000, 100000, 20, 500, 1'b0);

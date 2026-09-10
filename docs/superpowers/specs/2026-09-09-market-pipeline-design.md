@@ -383,7 +383,24 @@ register bus. `BUY` if `score > theta_buy`, `SELL` if `score < theta_sell`,
 else `HOLD`.
 
 Structural latency is independent of the weight values — that is the whole
-point of the "AI customization" claim and it is asserted, not assumed.
+point of the "AI customization" claim.
+
+It holds **by construction**: the configuration reaches the adder tree only,
+and appears in no `valid`, `ready` or enable expression. It is **proven** by
+`tb/tb_policy_configs.sv`, which replays one trace under the two committed
+configurations in `tb/configs/` and requires the decisions to differ while the
+latency histograms match bucket for bucket. A mutant that routes a single
+config bit into the stall path is killed by that test.
+
+The configuration is captured into the pipeline at accept, so an event is
+scored entirely by the snapshot active when it entered; a commit landing
+mid-flight cannot produce a decision assembled from two weight sets.
+
+**The score cannot reach the `SCORE_W` rail at these widths** — worst case is
+about 1.6e6 against a 2**31 limit — so the saturating accumulate is defensive
+rather than load-bearing. `tb_policy_engine` pins the achievable range and
+fails if it grows past a tenth of the rail, which is the point at which the
+saturation would start doing real work.
 
 ### 5.6 `risk_gate.sv` — 1 cycle
 
