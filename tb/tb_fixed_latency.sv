@@ -34,11 +34,18 @@ module tb_fixed_latency;
   logic [EVENT_W-1:0] s_data;
   logic               s_valid, s_ready;
 
-  market_event_t      d_event, m_event;
-  event_err_t         d_err, m_err;
-  logic               d_valid, d_ready, m_valid, m_ready;
+  // The full pipeline as built today: decode -> sequence -> book -> features.
+  // Latency is measured across all four, so LATENCY_CYCLES is proven end to
+  // end rather than inferred by adding up the per-stage binds.
+  market_event_t      d_event, q_event, b_event, m_event;
+  event_err_t         d_err, q_err, b_err, m_err;
+  logic               d_valid, d_ready, q_valid, q_ready;
+  logic               b_valid, b_ready, m_valid, m_ready;
+  book_t              b_book;
+  logic               b_book_stale;
+  feature_t           m_feat;
   logic [CNT_W-1:0]   gap_count, stale_count, missed_total, bad_event_count;
-  logic [CNT_W-1:0] resync_count;
+  logic [CNT_W-1:0]   resync_count;
 
   event_decoder u_dec (
     .clk(clk), .rst_n(rst_n),
@@ -49,10 +56,25 @@ module tb_fixed_latency;
   sequence_checker u_seq (
     .clk(clk), .rst_n(rst_n),
     .s_event(d_event), .s_err(d_err), .s_valid(d_valid), .s_ready(d_ready),
-    .m_event(m_event), .m_err(m_err), .m_valid(m_valid), .m_ready(m_ready),
+    .m_event(q_event), .m_err(q_err), .m_valid(q_valid), .m_ready(q_ready),
     .resync_count(resync_count),
     .gap_count(gap_count), .stale_count(stale_count),
     .missed_total(missed_total), .bad_event_count(bad_event_count)
+  );
+
+  top_of_book u_tob (
+    .clk(clk), .rst_n(rst_n),
+    .s_event(q_event), .s_err(q_err), .s_valid(q_valid), .s_ready(q_ready),
+    .m_event(b_event), .m_err(b_err), .m_book(b_book),
+    .m_book_stale(b_book_stale), .m_valid(b_valid), .m_ready(b_ready)
+  );
+
+  feature_engine u_feat (
+    .clk(clk), .rst_n(rst_n),
+    .s_event(b_event), .s_err(b_err), .s_book(b_book),
+    .s_book_stale(b_book_stale), .s_valid(b_valid), .s_ready(b_ready),
+    .m_event(m_event), .m_err(m_err), .m_feat(m_feat),
+    .m_valid(m_valid), .m_ready(m_ready)
   );
 
   // Deterministic stimulus randomization; see tb_decode_validate for why the
@@ -154,8 +176,8 @@ module tb_fixed_latency;
     measured = 0;
     errors   = 0;
     foreach (hist[i]) hist[i] = 0;
-    $display("INFO: seed=%0d LATENCY_CYCLES=%0d (LAT_DECODE=%0d + LAT_SEQCHK=%0d)",
-             seed, LATENCY_CYCLES, LAT_DECODE, LAT_SEQCHK);
+    $display("INFO: seed=%0d LATENCY_CYCLES=%0d (LAT_DECODE=%0d + LAT_SEQCHK=%0d + LAT_TOB=%0d + LAT_FEATURE=%0d)",
+             seed, LATENCY_CYCLES, LAT_DECODE, LAT_SEQCHK, LAT_TOB, LAT_FEATURE);
 
     m_ready = 1'b1;      // held high for the whole run: the stated condition
     s_valid = 1'b0;

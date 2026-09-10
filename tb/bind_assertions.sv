@@ -39,3 +39,31 @@ bind sequence_checker handshake_checker #(
   .m_tag(m_event.seq),
   .m_payload({m_event, m_err})
 );
+
+bind top_of_book handshake_checker #(
+  .LATENCY(market_pkg::LAT_TOB),
+  .TAG_W  (market_pkg::SEQ_W),
+  .PAY_W  ($bits(market_pkg::market_event_t) + $bits(market_pkg::event_err_t)
+           + $bits(market_pkg::book_t) + 1)
+) u_chk (
+  .clk(clk), .rst_n(rst_n),
+  .s_valid(s_valid), .s_ready(s_ready),
+  .m_valid(m_valid), .m_ready(m_ready),
+  .s_tag(s_event.seq),
+  .m_tag(m_event.seq),
+  .m_payload({m_event, m_err, m_book, m_book_stale})
+);
+
+bind feature_engine handshake_checker #(
+  .LATENCY(market_pkg::LAT_FEATURE),
+  .TAG_W  (market_pkg::SEQ_W),
+  .PAY_W  ($bits(market_pkg::market_event_t) + $bits(market_pkg::event_err_t)
+           + $bits(market_pkg::feature_t))
+) u_chk (
+  .clk(clk), .rst_n(rst_n),
+  .s_valid(s_valid), .s_ready(s_ready),
+  .m_valid(m_valid), .m_ready(m_ready),
+  .s_tag(s_event.seq),
+  .m_tag(m_event.seq),
+  .m_payload({m_event, m_err, m_feat})
+);
