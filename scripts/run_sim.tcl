@@ -2,12 +2,20 @@
 #
 #   make sim                 # default TOP
 #   make sim TOP=tb_event_decoder
+#   make sim TOP=tb_decode_validate PLUSARGS="SEED=7"
 #
-# Invoked as: vivado -mode batch -notrace -source scripts/run_sim.tcl -tclargs $(TOP)
+# Invoked as:
+#   vivado -mode batch -notrace -source scripts/run_sim.tcl -tclargs $(TOP) [plusarg ...]
 # Runs xvlog/xelab/xsim as external steps so the same commands can be pasted
 # into a shell when debugging a failure.
+#
+# Every tclarg after the top name is a NAME=VALUE plusarg forwarded to the
+# simulation. Without this the +SEED plusarg the testbenches echo into the log
+# could never actually be set, so a "reproduce with this seed" instruction had
+# no mechanism behind it.
 
 set TOP [expr {[llength $argv] > 0 ? [lindex $argv 0] : "tb_market_pipeline_top"}]
+set PLUSARGS [lrange $argv 1 end]
 
 set root [file normalize [file dirname [info script]]/..]
 cd $root
@@ -53,17 +61,42 @@ run_step xelab xelab -debug typical -relax -s ${TOP}_snap $TOP
 puts "== xsim =="
 file mkdir [file join $root build]
 set simlog [file join $root build sim_${TOP}.log]
-catch {exec -ignorestderr xsim ${TOP}_snap -R >& $simlog}
+
+# --maxlogsize caps the log at 64 MB. A DUT broken badly enough to fail an
+# assertion on every clock edge produced a 1.1 GB log during mutation testing,
+# which this script then tried to slurp into a single Tcl string. The cap makes
+# a catastrophic failure reportable instead of fatal to the harness -- and the
+# PASS gate below is what keeps a truncated log from reading as success.
+set xsim_cmd [list xsim ${TOP}_snap -R --maxlogsize 64]
+foreach pa $PLUSARGS { lappend xsim_cmd --testplusarg $pa }
+puts "   [join $xsim_cmd " "]"
+catch {exec -ignorestderr {*}$xsim_cmd >& $simlog}
 
 set fh [open $simlog r]
 set out [read $fh]
 close $fh
 puts $out
 
-set bad [lsearch -all -inline -regexp [split $out "\n"] {^\s*(Fatal|Error|FATAL_ERROR):}]
+set lines [split $out "\n"]
+set bad [lsearch -all -inline -regexp $lines {^\s*(Fatal|Error|FATAL_ERROR):}]
 if {[llength $bad] > 0} {
     puts "== SIMULATION FAILED: $TOP =="
-    foreach line $bad { puts "   $line" }
+    foreach line [lrange $bad 0 49] { puts "   $line" }
+    if {[llength $bad] > 50} {
+        puts "   ... and [expr {[llength $bad] - 50}] more"
+    }
+    puts "   full log: [file join build sim_${TOP}.log]"
+    exit 1
+}
+
+# A clean log is not the same as a completed run. If xsim dies -- crash, log
+# cap, killed process -- it leaves no Fatal:/Error: line behind and the scan
+# above reports success on a simulation that never finished. Every testbench
+# ends by printing "PASS: <name>"; require that marker.
+if {[llength [lsearch -all -inline -regexp $lines {^\s*PASS:}]] == 0} {
+    puts "== SIMULATION FAILED: $TOP =="
+    puts "   no PASS: marker in the log -- the run did not reach the end of the"
+    puts "   testbench (crash, log-size cap, or a missing \$display)."
     puts "   full log: [file join build sim_${TOP}.log]"
     exit 1
 }
