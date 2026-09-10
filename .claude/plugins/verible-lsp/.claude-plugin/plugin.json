@@ -1,0 +1,8 @@
+{
+  "name": "verible-lsp",
+  "description": "SystemVerilog/Verilog language server (Verible) for the market-pipeline RTL.",
+  "version": "1.0.0",
+  "author": {
+    "name": "fpga-low-latency-market-pipeline"
+  }
+}

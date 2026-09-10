@@ -1,0 +1,29 @@
+# Verible lint configuration for fpga-low-latency-market-pipeline.
+#
+# Found automatically by `verible-verilog-ls --rules_config_search` (wired up in
+# .claude/plugins/verible-lsp/.lsp.json) and by `verible-verilog-lint
+# --rules_config_search`, so editor diagnostics and any CLI lint run agree.
+#
+# The authoritative lint step stays `verilator --lint-only -Wall` (`make lint`).
+# Verible parses each file standalone and never elaborates the design, so it
+# cannot see width, driver or connectivity problems and does not replace that
+# step. What follows is scoped to defects Verilator does not report.
+#
+# Deltas only: every rule not named here keeps its Verible default, and the
+# defaults stay active alongside these entries. Verified against
+# verible-verilog-ls v0.0-4171-ga5e38787 and Verilator 5.032 on 2026-09-09.
+
+# Verilator warns DECLFILENAME when a file name does not match the module it
+# declares, which Verible's default-on module-filename already mirrors. This
+# extends the same idea to the one-module-per-file layout CLAUDE.md specifies
+# for rtl/, which neither of those two rules enforces.
++one-module-per-file
+
+# Verilator errors ENDLABEL on a mismatched module/endmodule label but says
+# nothing about begin/end block labels; this covers the block labels.
++mismatched-labels
+
+# Verilator 5.032 -Wall accepts a negative unpacked dimension such as [-2:0]
+# without comment. Non-zero-based dimensions have no place in the fixed-point
+# core path, so reject them here.
++forbid-negative-array-dim
