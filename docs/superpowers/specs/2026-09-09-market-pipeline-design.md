@@ -28,7 +28,7 @@ The project is finished when all nine goals below hold simultaneously on
 | 5 | Risk limits work | Directed tests: position limit, quantity limit, spread guard, kill switch, saturation |
 | 6 | The design closes timing on the target part | `results/BUILD_SCOPE.md` generated from a real post-route run |
 | 7 | The critical path is understood and documented | `docs/TIMING_CLOSURE.md` with before/after runs and the achieved Fmax |
-| 8 | CI runs lint, Python tests, and simulation | Green Actions run with the scaffold guards removed |
+| 8 | CI runs lint and Python tests | Green Actions run with the scaffold guards removed; simulation logs attached to each RTL pull request, since Vivado is not available on GitHub-hosted runners |
 | 9 | Docs and README state only measured numbers | Five `docs/*.md`; README figures sourced from `BUILD_SCOPE.md` |
 
 ### Explicitly not delivered
@@ -346,12 +346,17 @@ is legitimate for a figure describing this board.
 
 ### 8.2 Achieved Fmax — an honest ceiling
 
-"Closes at 100 MHz" understates a design that closes with 7 ns of slack.
-`docs/TIMING_CLOSURE.md` records two distinct numbers, and the distinction is
-the point:
+"Closes at 100 MHz" understates a design that closes with slack to spare, so
+`docs/TIMING_CLOSURE.md` records two distinct numbers once there is a design to
+measure. The distinction between them is the point:
 
-- **Slack-derived estimate**: `Fmax_est = 1000 / (10.0 - WNS)` MHz from the
-  100 MHz run. Cheap, and an *upper* bound — the router stops optimizing once
+**No slack figure appears in this document.** At the time of writing there is
+no `market_pipeline_top.sv`, no synthesis run, and nothing in `results/`, so
+this project has no measured WNS. Everything below is a formula to be filled in
+from a real `make build`, never a value quoted in advance.
+
+- **Slack-derived estimate**: `Fmax_est = 1000 / (10.0 - WNS)` MHz, where WNS
+  comes from the 100 MHz run. Cheap, and an *upper* bound — the router stops optimizing once
   the constraint is met, so the true achievable frequency is usually lower.
 - **Measured Fmax**: re-run synthesis and implementation with the clock period
   tightened stepwise until WNS goes negative. The last period that closes is
