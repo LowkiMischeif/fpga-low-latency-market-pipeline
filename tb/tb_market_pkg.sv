@@ -49,10 +49,6 @@ module tb_market_pkg;
       $fatal(1, "FAIL: event_err_t must carry exactly 5 flags, got %0d", $bits(event_err_t));
 
     // ---- book + feature stages -------------------------------------
-    if (LATENCY_CYCLES != LAT_DECODE + LAT_SEQCHK + LAT_TOB + LAT_FEATURE)
-      $fatal(1, "FAIL: LATENCY_CYCLES is not the sum of its stages");
-    if (LATENCY_CYCLES != 5)
-      $fatal(1, "FAIL: expected 5 cycles on this branch, got %0d", LATENCY_CYCLES);
     if (LAT_TOB != 1)     $fatal(1, "FAIL: LAT_TOB");
     if (LAT_FEATURE != 2) $fatal(1, "FAIL: LAT_FEATURE");
 
@@ -85,6 +81,47 @@ module tb_market_pkg;
         prev = cur;
       end
     end
+
+    // ---- policy + risk stages ---------------------------------------
+    if (LATENCY_CYCLES != LAT_DECODE + LAT_SEQCHK + LAT_TOB + LAT_FEATURE
+                        + LAT_POLICY + LAT_RISK)
+      $fatal(1, "FAIL: LATENCY_CYCLES is not the sum of its stages");
+    if (LATENCY_CYCLES != 8)
+      $fatal(1, "FAIL: expected 8 cycles on this branch, got %0d", LATENCY_CYCLES);
+    if (LAT_POLICY != 2) $fatal(1, "FAIL: LAT_POLICY");
+    if (LAT_RISK   != 1) $fatal(1, "FAIL: LAT_RISK");
+
+    // Weights must be able to express both signs and a fraction, or the
+    // "offline-tuned" claim is empty.
+    if (W_W <= W_FRAC_W)
+      $fatal(1, "FAIL: W_W must exceed W_FRAC_W so weights have an integer part");
+    if (SCORE_W <= W_W)
+      $fatal(1, "FAIL: SCORE_W must exceed W_W to hold a weighted sum");
+
+    // The score accumulator must saturate, not wrap: a weighted sum that
+    // wraps turns a strong sell signal into a strong buy.
+    begin
+      logic signed [SCORE_W-1:0] big, res;
+      big = {1'b0, {(SCORE_W-1){1'b1}}};          // most positive
+      res = score_sat_add(big, 32'sd1);
+      if (res !== big) $fatal(1, "FAIL: score_sat_add did not clamp high: %0d", res);
+      big = {1'b1, {(SCORE_W-1){1'b0}}};          // most negative
+      res = score_sat_add(big, -32'sd1);
+      if (res !== big) $fatal(1, "FAIL: score_sat_add did not clamp low: %0d", res);
+      if (score_sat_add(32'sd5, -32'sd7) !== -32'sd2)
+        $fatal(1, "FAIL: score_sat_add ordinary case");
+      if (score_sat_add(32'sd0, 32'sd0) !== 32'sd0)
+        $fatal(1, "FAIL: score_sat_add zero");
+    end
+
+    // Position must be signed and wider than any limit it is compared to.
+    if (POS_W <= QTY_W)
+      $fatal(1, "FAIL: POS_W must exceed QTY_W");
+
+    // Reason codes must be distinct, and RSN_NONE must be zero so a reset
+    // decision_t reads as "no reason", not as a spurious rejection.
+    if (RSN_NONE !== 4'd0) $fatal(1, "FAIL: RSN_NONE must be 0");
+    if (DEC_HOLD !== 2'd0) $fatal(1, "FAIL: DEC_HOLD must be 0");
 
     $display("PASS: tb_market_pkg");
     $finish;
