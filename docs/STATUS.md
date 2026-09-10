@@ -4,26 +4,26 @@ Written for Tyler returning to the project. Updated 2026-09-10.
 
 ## The three things to look at first
 
-1. **PR #6 needs your merge before #7 makes sense.** `feat/policy-risk` is
-   *stacked* on `fix/generator-and-gating`, because it needs that branch's
-   book-capable generator. GitHub will show #7's diff against `main` including
-   #6's commits until #6 lands. Merge #6, then #7.
+1. **Merge order: #6 then #7.** `feat/policy-risk` is *stacked* on
+   `fix/generator-and-gating`, because it needs that branch's book-capable
+   generator. PR #7's diff will shrink to just the policy/risk commits once #6
+   lands. Neither is merged; I have merged nothing.
 
-2. **The headline claim is proven, and I want you to check the experiment, not
-   just the result.** `tb/tb_policy_configs.sv` replays one trace under both
-   committed configs: 839 trades vs 1679, **1292 of 2000 decisions differ**,
-   latency histograms **identical at 8 cycles**. The part worth your eye is
-   whether the two passes are genuinely the same experiment — full reset
-   between them, byte-identical stimulus rebuilt from one seed. If that is
-   sound the claim is sound; if not, nothing else in the branch matters.
+2. **A false claim shipped in a committed artifact and I did not catch it —
+   the skeptic did.** `tuned.json`/`tuned.cfg` said "from
+   `scripts/train_policy.py --seed 7`" and were hand-picked values that
+   `random.uniform` cannot produce. `STATUS.md` said so honestly while the
+   artifact the testbench reads said otherwise. It is fixed — the trainer now
+   emits a complete policy, `tuned.json` is regenerated from a real run, and a
+   test reruns the command in its own note — but the near-miss is worth your
+   eye, because it was in the one piece of evidence this project is named for.
 
-3. **Two mutants cannot be killed, and I left them out of the suite with
-   reasons rather than quietly dropping them.** See the comments in
-   `scripts/mutants.txt`. One is the policy saturation clamp (the score cannot
-   reach the `SCORE_W` rail at these widths, so the clamp is defensive); one is
-   the spread guard's `!book_empty` qualification (shadowed by reason
-   precedence, since `book_empty` is tested first). Both are judgement calls I
-   made alone and either could reasonably be decided the other way.
+3. **`cfg_boundary` turned out to be redundant.** Writing the mid-stream commit
+   test showed that forcing it high changes nothing: atomicity comes from the
+   per-event configuration snapshot, not from the boundary signal. I documented
+   that in the RTL, the spec and `mutants.txt` rather than leaving it looking
+   load-bearing — but if you would rather delete the signal than keep it as
+   defence in depth, that is a reasonable call and it is yours.
 
 ## Merged on `main`
 
@@ -37,60 +37,63 @@ Written for Tyler returning to the project. Updated 2026-09-10.
 
 `main` is at `ff6350d`. I have not touched it.
 
-## Open
+## Open, both yours to merge
 
-**PR #6 — `fix/generator-and-gating`.** Clears the three deferrals from #5:
-the generator now reaches the book (cancel/trade hits went 0 → 169/181),
-`feature_engine` has one gating rule, `MOMENTUM_LAG` deleted. CI green.
-**Yours to merge.**
+**PR #6 — `fix/generator-and-gating`.** The three deferrals from #5: the
+generator reaches the book (cancel/trade hits 0 → 169/181), one feature gating
+rule, `MOMENTUM_LAG` deleted. CI green.
 
-## On a branch, not yet a PR
+**PR #7 — `feat/policy-risk`.** `policy_engine`, `risk_gate`, `config_regs`,
+the three Python tools, two committed configs, `LATENCY_CYCLES` = 8. CI green.
+Skeptic-reviewed: 1 BLOCKER and 5 MAJOR found, all fixed.
 
-**`feat/policy-risk`** — pushed, no PR opened yet; the skeptic review was still
-running when I wrote this. Two commits:
+| Check | Result |
+|---|---|
+| `make lint` / `make lint-tb` | clean / clean (12 testbenches) |
+| `pytest` | 50 passed |
+| `make sim-all` | 12/12 plus generated-trace replay |
+| `./scripts/mutate.sh` | **41 mutants, 41 killed** |
+| Latency | min = mean = max = **8 cycles** over 2000 events |
+| Two configs | 839 vs 1485 trades, 1188/2000 decisions differ, histograms identical |
+| Mid-stream commit | 1371 under A, 1441 under B, **0 split** |
 
-- `36d196d` — `policy_engine`, `risk_gate`, `config_regs`
-- `29cb825` — policy tooling, two committed configs, the 8-cycle proof
+## What the reviewer found in #7, in case you only read one thing
 
-State: `make lint` clean, `make lint-tb` clean (12 testbenches), `pytest`
-45 passed, `make sim-all` 12/12 plus the generated-trace replay,
-`./scripts/mutate.sh` **39 mutants, 39 killed**.
-
-| Stage | Constant | Cycles |
-|---|---|---:|
-| `event_decoder` | `LAT_DECODE` | 1 |
-| `sequence_checker` | `LAT_SEQCHK` | 1 |
-| `top_of_book` | `LAT_TOB` | 1 |
-| `feature_engine` | `LAT_FEATURE` | 2 |
-| `policy_engine` | `LAT_POLICY` | 2 |
-| `risk_gate` | `LAT_RISK` | 1 |
-| **Total** | **`LATENCY_CYCLES`** | **8** |
-
-min = mean = max = 8 over 2000 events, 80 ns at the board's fixed 100 MHz.
-That figure is arithmetic on the oscillator, **not a synthesis result** — there
-is still no `market_pipeline_top`, no synthesis run, and no measured WNS
-anywhere in this repo.
+- **`risk_gate` failed open.** `next_pos` wrapped at `POS_W`, so a large limit
+  plus a large order allowed a trade that should have been refused. Reachable
+  through the supported config path. A risk gate that fails open is the one
+  failure mode that module exists to prevent.
+- **The reason codes did not implement their own purpose.** Every HOLD was
+  labelled a suppressed trade (`hold=1619 rejected=1618`). Now 1027.
+- **`risk_cfg` was not snapshotted**, so a commit applied new limits to a score
+  computed under old weights.
 
 ## Not done
 
-- `market_pipeline_top` and the whole `feat/integration-timing` stage:
-  synthesis, timing closure, the five `docs/*.md`, the README.
-- No numbers have been published to the README. There is no README.
-- Reset asserted mid-flight is covered per-module but not through the
-  integrated chain.
+- `market_pipeline_top` and the whole integration stage: synthesis, timing
+  closure, the five `docs/*.md`, the README.
+- **No numbers have been published to a README. There is no README.** The 80 ns
+  figure is arithmetic on the oscillator and the testbench log now says so in
+  as many words.
+- Reset asserted mid-flight is covered per-module, not through the integrated
+  chain.
+- `train_policy.py` trains on `generate_events` traces while
+  `tb_policy_configs` builds its own ladder stimulus. The trained policy does
+  trade well on both, but they are different distributions and it would be
+  better if they were not.
 
 ## Decisions I made alone that you may want to overturn
 
-- **Q3.12 weights, `SCORE_W = 32`.** The weights carry all the feature scaling
-  so the features keep their natural units. It works, but it makes the tuner's
-  numbers unintuitive — `w_spread = 1.0` means "one score unit per tick".
-- **`order_qty` comes from config**, and `risk_gate` rejects it against
-  `max_order_qty`. That is a misconfiguration guard rather than a market-aware
-  size, and a real system would size against available liquidity.
-- **The training objective is synthetic** and documented as such in
-  `train_policy.py`: it rewards agreement with the next midprice move and
-  penalises churn. It separates policies; it does not value them. Nothing
-  claims profitability and nothing should.
-- **Baseline config is spread-led, tuned is imbalance-led.** I picked
-  thresholds from the measured feature range rather than from the tuner,
-  because the tuner's own output traded zero times against this stimulus.
+- **Q3.12 weights, `SCORE_W = 32`.** Weights carry all the feature scaling, so
+  `w_spread = 1.0` means "one score unit per tick" — correct but unintuitive.
+- **`order_qty` comes from config**, and `risk_gate` checks it against
+  `max_order_qty`. That is a misconfiguration guard, not market-aware sizing.
+- **The training objective is synthetic** and documented as such: it rewards
+  agreement with the next midprice move and penalises churn. It separates
+  policies; it does not value them. Nothing claims profitability.
+- **Baseline is hand-chosen, not trained**, and says so. It exists to be a
+  different policy on a different signal, which is a stronger demonstration
+  than two tuner outputs that happen to differ.
+- **Two mutants are deliberately absent** from the suite with written reasons:
+  the policy saturation clamp and the spread guard's `!book_empty`
+  qualification. Both are unkillable for structural reasons, not weak tests.
