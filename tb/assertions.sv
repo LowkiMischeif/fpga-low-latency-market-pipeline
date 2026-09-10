@@ -170,12 +170,29 @@ module handshake_checker #(
   // syntax, so a typo inside it surfaces only when make sim runs. That is
   // acceptable because no CI job runs xsim anyway; make sim-all is the gate.
 `ifndef VERILATOR
+  // The tag comparison is the whole property. Without it this reads
+  //   (accept) |-> ##LATENCY m_valid
+  // which on a pipeline that stays full is satisfied by whatever event happens
+  // to be presenting -- m_valid is high nearly every cycle, so the property
+  // passes no matter what the stage did, and it cannot see an inserted
+  // register. Requiring that the event accepted at T is the one presenting at
+  // T+LATENCY is what makes "exactly LATENCY" mean anything.
+  //
+  // The antecedent also requires m_ready to have been high for the whole
+  // window, not merely at the accept: under backpressure the output waits, and
+  // the fixed-latency claim is explicitly conditional on a drainable output.
   property p_fixed_latency;
     @(posedge clk) disable iff (!rst_n)
-      (s_valid && s_ready && m_ready) |-> ##LATENCY m_valid;
+      // m_ready[*LATENCY] starting at the accept makes the antecedent span
+      // cycles T .. T+LATENCY-1, and an implication counts from the END of its
+      // antecedent -- so the consequent is ##1, not ##LATENCY. Getting that
+      // wrong lands the check at T+2*LATENCY-1 and it fires on correct RTL.
+      (s_valid && s_ready && m_ready) ##0 m_ready[*LATENCY]
+        |-> ##1 (m_valid && m_tag == $past(s_tag, LATENCY));
   endproperty
   a_fixed_latency: assert property (p_fixed_latency)
-    else $error("output did not appear exactly %0d cycles after accept", LATENCY);
+    else $error("event accepted %0d cycles ago is not the one presenting (tag %0h)",
+                LATENCY, m_tag);
 `endif
 
   // The other half of "exactly": nothing may come out EARLY either, and a

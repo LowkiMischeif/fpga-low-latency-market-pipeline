@@ -17,10 +17,6 @@ module tb_market_pkg;
     if (SYMBOL_LSB != SIDE_LSB + SIDE_W)   $fatal(1, "FAIL: SYMBOL_LSB");
 
     if (N_SYMBOLS != (1 << SYMBOL_W)) $fatal(1, "FAIL: N_SYMBOLS");
-    if (LATENCY_CYCLES != LAT_DECODE + LAT_SEQCHK)
-      $fatal(1, "FAIL: LATENCY_CYCLES is not the sum of its stages");
-    if (LATENCY_CYCLES != 2)
-      $fatal(1, "FAIL: expected 2 cycles on this branch, got %0d", LATENCY_CYCLES);
 
     // The enum encodings themselves, against the literals in the design spec.
     // Comparing EVT_ADD to EVT_ADD would prove nothing; these are the numbers
@@ -51,6 +47,44 @@ module tb_market_pkg;
       $fatal(1, "FAIL: market_event_t width %0d", $bits(market_event_t));
     if ($bits(event_err_t) != 5)
       $fatal(1, "FAIL: event_err_t must carry exactly 5 flags, got %0d", $bits(event_err_t));
+
+    // ---- book + feature stages -------------------------------------
+    if (LATENCY_CYCLES != LAT_DECODE + LAT_SEQCHK + LAT_TOB + LAT_FEATURE)
+      $fatal(1, "FAIL: LATENCY_CYCLES is not the sum of its stages");
+    if (LATENCY_CYCLES != 5)
+      $fatal(1, "FAIL: expected 5 cycles on this branch, got %0d", LATENCY_CYCLES);
+    if (LAT_TOB != 1)     $fatal(1, "FAIL: LAT_TOB");
+    if (LAT_FEATURE != 2) $fatal(1, "FAIL: LAT_FEATURE");
+
+    // A cleared book side must be a validity bit, never a sentinel price:
+    // zero is a legal price in Q14.2.
+    if ($bits(book_t) != 2 * (1 + PRICE_W + QTY_W))
+      $fatal(1, "FAIL: book_t width %0d", $bits(book_t));
+
+    // Imbalance is signed Q1.14, so +/-1.0 must be representable.
+    if (IMB_ONE != (1 <<< IMB_FRAC_W))
+      $fatal(1, "FAIL: IMB_ONE %0d != 2**IMB_FRAC_W", IMB_ONE);
+    if (IMB_W <= IMB_FRAC_W)
+      $fatal(1, "FAIL: IMB_W must exceed IMB_FRAC_W to hold +/-1.0");
+
+    // The reciprocal ROM the feature engine indexes.
+    if (RECIP_IDX_W != 8)    $fatal(1, "FAIL: RECIP_IDX_W");
+    if (RECIP_ROM_N != 256)  $fatal(1, "FAIL: RECIP_ROM_N");
+    // Every entry must be non-zero: a zero would silently produce a zero
+    // imbalance for a perfectly valid book.
+    begin
+      logic [RECIP_W-1:0] prev, cur;
+      for (int i = 0; i < RECIP_ROM_N; i++) begin
+        cur = recip_rom(RECIP_IDX_W'(i));
+        if (cur == '0) $fatal(1, "FAIL: recip_rom(%0d) is zero", i);
+        // Monotonically decreasing: a larger denominator cannot have a larger
+        // reciprocal. Catches an off-by-one in the table generator.
+        if (i > 0 && cur >= prev)
+          $fatal(1, "FAIL: recip_rom not decreasing at %0d (%0d >= %0d)",
+                 i, cur, prev);
+        prev = cur;
+      end
+    end
 
     $display("PASS: tb_market_pkg");
     $finish;

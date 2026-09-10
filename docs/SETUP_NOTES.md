@@ -60,48 +60,69 @@ or rely on the Makefile, which falls back to the default install path when
 a subshell and silently does nothing — a pipe will make it look like the
 settings script failed.
 
-## Vivado licensing breaks when WSL2 changes its MAC address
+## Vivado licensing under WSL2: use mirrored networking
 
-**Symptom.** Simulation and synthesis worked yesterday; today every Vivado
-invocation fails immediately:
+The free Basic Tier licence is node-locked to a `HOSTID`, which on Linux is the
+MAC address of the primary interface. Under WSL2's default NAT networking,
+`eth0` is a virtual NIC whose MAC is regenerated at boot, so a licence issued
+today stops working the next time WSL restarts:
 
 ```
 ERROR: Vivado Design Suite cannot be launched because a valid license was not
 found. Visit the Vivado Licensing page to choose and generate the right license.
 ```
 
-The licence file is still present and has not expired -- `~/.Xilinx/Xilinx.lic`
-still reads `INCREMENT Vivado_Simulation xilinxd 2027.09 10-sep-2027`.
+The licence file is fine when this happens -- `~/.Xilinx/Xilinx.lic` is present
+and unexpired. Nothing in the message suggests networking, which is why the
+obvious response is to re-download a licence that was never the problem.
 
-**Cause.** The licence is node-locked to a `HOSTID`, which on a Linux host is
-the MAC address of the primary interface. WSL2 generates its virtual NIC MAC at
-boot, and unless it is pinned it changes when WSL restarts. The licence then
-names a machine that no longer exists:
-
-```sh
-grep -oE 'HOSTID=[^ ;]*' ~/.Xilinx/Xilinx.lic          # e.g. 00155D3C09D3
-ip link show eth0 | grep -oE 'link/ether [0-9a-f:]{17}'
-```
-
-Strip the colons from the second and compare. A mismatch is this problem.
-
-**Fix.** Pin the MAC on the Windows side so it survives restarts. In
-`C:\Users\<you>\.wslconfig`:
+**Fix: mirrored networking.** In `C:\Users\<you>\.wslconfig`:
 
 ```ini
 [wsl2]
-macAddress=00:15:5d:3c:09:d3
+networkingMode=mirrored
 ```
 
-using the MAC the licence was issued against, then `wsl --shutdown` and
-restart. Regenerating the licence against the new MAC also works once, but is
-not a fix: WSL will reassign again.
+then `wsl --shutdown` and restart. `eth0` inside WSL now carries the *physical*
+Ethernet adapter's MAC, which does not change across reboots. Issue the Basic
+Tier licence against that MAC and it keeps working.
 
-**Why this is worth writing down.** The error names the licence, and the
-licence is fine. Nothing in the message suggests networking, so the obvious
-response is to re-download a licence that was never the problem.
+Verify the two agree:
+
+```sh
+ip link show eth0 | grep -oE 'link/ether [0-9a-f:]{17}'
+grep -oE 'HOSTID=[^ ;]*' ~/.Xilinx/Xilinx.lic
+```
+
+Strip the colons from the first; they must match. Then confirm the toolchain
+actually launches, which is a stronger check than reading the licence file:
+
+```sh
+vivado -mode batch -source /dev/null    # exits 0
+make sim TOP=tb_market_pkg              # PASS
+```
+
+**Approaches that did not work**, recorded so they are not retried:
+
+- `macAddress=` in `.wslconfig` under default NAT networking. Pins the virtual
+  NIC, but the licence still has to be reissued whenever the pinned value is
+  changed, and it does not survive a networking-mode change.
+- A `[boot]` command in `/etc/wsl.conf` setting the MAC, or adding a dummy
+  interface with the licensed MAC. Both alter an interface Vivado's licence
+  check does not end up reading, so the HOSTID it sees is unchanged.
+
+Mirrored networking is the one that holds because it removes the virtual MAC
+from the picture entirely rather than trying to pin it.
 
 ## Simulator licensing
 
-Tracked separately; `xsim` additionally requires a Vivado Simulator license
-checkout, which is not covered by these notes.
+`xsim` needs a Vivado Simulator feature checkout in addition to the Basic Tier
+package. The free Basic Tier covers it for the parts this project targets, and
+the first line of a working run says so:
+
+```
+INFO: [Common 17-3922] A valid Vivado Design Suite BASIC license has been detected.
+```
+
+If synthesis works but simulation does not, that is a separate feature
+checkout failing, not the node-lock problem above.
