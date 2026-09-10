@@ -13,13 +13,8 @@ jobs:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install -y verilator
       - run: verilator --version
-      # Scaffold guard: skip until rtl/ has sources. Drop once market_pkg.sv lands.
       - name: lint rtl
-        run: |
-          shopt -s nullglob
-          srcs=(rtl/*.sv)
-          if [ ${#srcs[@]} -eq 0 ]; then echo "no RTL yet, skipping"; exit 0; fi
-          make lint
+        run: make lint
 
   python:
     name: pytest
@@ -30,5 +25,4 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -r requirements.txt
-      # exit code 5 == "no tests collected", expected until scripts/ has tests.
-      - run: pytest -q || [ $? -eq 5 ]
+      - run: pytest -q
