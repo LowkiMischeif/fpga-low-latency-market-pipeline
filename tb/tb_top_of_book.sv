@@ -25,12 +25,48 @@ module tb_top_of_book;
   // result of whatever is still sitting on the input.
   book_t last_book;
   logic  last_stale;
+  // Counting handoffs rather than counting cycles: with backpressure enabled
+  // the output for an event lands an unknown number of cycles after it is
+  // accepted, so feed() waits for the handoff itself.
+  int    out_seen = 0;
   always_ff @(posedge clk) begin
     if (rst_n && m_valid && m_ready) begin
       last_book  <= m_book;
       last_stale <= m_book_stale;
+      out_seen   <= out_seen + 1;
     end
   end
+
+  // Randomized backpressure, enabled only for the stall phase. Driven on the
+  // negedge: assigning m_ready at the posedge races the DUT and the monitor,
+  // which both sample it on that edge.
+  bit          bp_enable = 1'b0;
+  int          stall_cycles = 0;
+  int unsigned bp_rng = 32'h5EED_BEEF;
+  function automatic int unsigned xorshift32(ref int unsigned state);
+    state = state ^ (state << 13);
+    state = state ^ (state >> 17);
+    state = state ^ (state << 5);
+    return state;
+  endfunction
+  initial begin
+    forever begin
+      @(negedge clk);
+      if (bp_enable && (xorshift32(bp_rng) % 3 == 0)) begin
+        m_ready = 1'b0;
+        repeat (1 + xorshift32(bp_rng) % 5) begin
+          @(negedge clk);
+          stall_cycles++;
+        end
+        m_ready = 1'b1;
+      end
+    end
+  end
+
+  // Wait for every accepted event to hand off. A fixed cycle count is wrong
+  // under backpressure: the tail of a burst can sit in the output register
+  // for as long as m_ready stays low.
+  int n_accepted = 0;
 
   task automatic check(string name, logic cond);
     if (!cond) begin
@@ -42,8 +78,9 @@ module tb_top_of_book;
   task automatic feed(logic [TYPE_W-1:0] t, logic [SYMBOL_W-1:0] sym,
                       logic [SIDE_W-1:0] sd, logic [PRICE_W-1:0] p,
                       logic [QTY_W-1:0] q, event_err_t err = '0);
+    int mark;
+    mark = out_seen;
     @(negedge clk);
-    while (!s_ready) @(negedge clk);
     s_event        = '0;
     s_event.etype  = t;
     s_event.symbol = sym;
@@ -52,10 +89,41 @@ module tb_top_of_book;
     s_event.qty    = q;
     s_err          = err;
     s_valid        = 1'b1;
-    @(posedge clk);
+    #1;
+    while (!s_ready) begin @(posedge clk); @(negedge clk); #1; end
+    @(posedge clk);                 // accepted on this edge
+    n_accepted++;
     @(negedge clk);
     s_valid = 1'b0;
-    @(posedge clk);
+    wait (out_seen == mark + 1);    // this event's output has been handed off
+    @(negedge clk);
+  endtask
+
+  // Stream an event without ever dropping s_valid, so the stage sees
+  // back-to-back traffic. feed() idles a cycle between events, so nothing in
+  // this file used to drive the stage at full rate.
+  task automatic push(logic [TYPE_W-1:0] t, logic [SYMBOL_W-1:0] sym,
+                      logic [SIDE_W-1:0] sd, logic [PRICE_W-1:0] p,
+                      logic [QTY_W-1:0] q, event_err_t err = '0);
+    @(negedge clk);
+    s_event        = '0;
+    s_event.etype  = t;
+    s_event.symbol = sym;
+    s_event.side   = sd;
+    s_event.price  = p;
+    s_event.qty    = q;
+    s_err          = err;
+    s_valid        = 1'b1;
+    #1;
+    while (!s_ready) begin @(posedge clk); @(negedge clk); #1; end
+    @(posedge clk);                 // accepted, valid stays high
+    n_accepted++;
+  endtask
+
+  task automatic drain();
+    @(negedge clk);
+    s_valid = 1'b0;
+    wait (out_seen == n_accepted);
     @(negedge clk);
   endtask
 
@@ -63,6 +131,7 @@ module tb_top_of_book;
     @(negedge clk); rst_n = 1'b0;
     @(posedge clk); @(negedge clk); rst_n = 1'b1;
     @(posedge clk); @(negedge clk);
+    n_accepted = out_seen;          // reset discards anything in flight
   endtask
 
   initial begin
@@ -199,8 +268,163 @@ module tb_top_of_book;
     check("symbol 7 survived symbol 6 cancel", last_book.bid_valid === 1'b1);
     check("symbol 7 qty intact", last_book.bid_qty === 16'd23);
 
+    // --- ADD with qty 0 -------------------------------------------------
+    // Not a hypothetical: the trust gate lets any well-formed event through
+    // and the wire format allows qty 0. The spec now says an ADD with no size
+    // cannot establish or improve a level, because otherwise it replaces a
+    // real sized best with a phantom zero-size one and feature_engine reports
+    // an imbalance of exactly +/-1.0 from an event that carried no size.
+    //
+    // The invariant these vectors pin: a valid side always has size > 0.
+    do_reset();
+    feed(EVT_ADD, 4'hB, SIDE_BID, 16'd100, 16'd0);
+    check("add qty0 on an empty side has no effect", last_book.bid_valid === 1'b0);
+    check("add qty0 leaves price clear", last_book.bid_price === 16'd0);
+
+    feed(EVT_ADD, 4'hB, SIDE_BID, 16'd100, 16'd5);
+    check("sized add establishes the level", last_book.bid_valid === 1'b1);
+    check("sized add qty", last_book.bid_qty === 16'd5);
+
+    // The case that motivated the rule: a better price carrying no size must
+    // not wipe the resting level.
+    feed(EVT_ADD, 4'hB, SIDE_BID, 16'd110, 16'd0);
+    check("better ADD with qty0 leaves the price alone", last_book.bid_price === 16'd100);
+    check("better ADD with qty0 leaves the size alone",  last_book.bid_qty   === 16'd5);
+    check("better ADD with qty0 keeps the side valid",   last_book.bid_valid === 1'b1);
+
+    // Equal price with qty 0 is a no-op too, by the same rule.
+    feed(EVT_ADD, 4'hB, SIDE_BID, 16'd100, 16'd0);
+    check("equal-price qty0 does not change size", last_book.bid_qty === 16'd5);
+
+    // Mirror on the ask.
+    feed(EVT_ADD, 4'hB, SIDE_ASK, 16'd900, 16'd0);
+    check("add qty0 ask has no effect", last_book.ask_valid === 1'b0);
+    feed(EVT_ADD, 4'hB, SIDE_ASK, 16'd900, 16'd8);
+    feed(EVT_ADD, 4'hB, SIDE_ASK, 16'd880, 16'd0);
+    check("better ask with qty0 leaves the price alone", last_book.ask_price === 16'd900);
+    check("better ask with qty0 leaves the size alone",  last_book.ask_qty   === 16'd8);
+
+    // The resulting invariant, checked directly: valid implies non-zero size.
+    check("invariant: valid bid has size", !last_book.bid_valid || last_book.bid_qty != '0);
+    check("invariant: valid ask has size", !last_book.ask_valid || last_book.ask_qty != '0);
+
+    // --- crossed book ---------------------------------------------------
+    // A top-of-book model has no cross-detection and the spec does not ask
+    // for one: bid above ask is representable and travels downstream, where
+    // SPREAD_W's extra bit keeps it from wrapping.
+    do_reset();
+    feed(EVT_ADD, 4'hC, SIDE_ASK, 16'd1000, 16'd10);
+    feed(EVT_ADD, 4'hC, SIDE_BID, 16'd2000, 16'd20);
+    check("crossed: bid above ask is accepted", last_book.bid_price === 16'd2000);
+    check("crossed: ask untouched",             last_book.ask_price === 16'd1000);
+    check("crossed: both sides still valid",
+          last_book.bid_valid === 1'b1 && last_book.ask_valid === 1'b1);
+    // Read the state back with an event that cannot change it: a book that
+    // "helpfully" un-crosses itself on the next update would clear a side
+    // here, and checking only the crossing event itself would not see it.
+    feed(EVT_CANCEL, 4'hC, SIDE_BID, 16'd7, 16'd0);
+    check("crossed: survives the next event, bid", last_book.bid_price === 16'd2000);
+    check("crossed: survives the next event, ask", last_book.ask_price === 16'd1000);
+    check("crossed: both sides still valid after the next event",
+          last_book.bid_valid === 1'b1 && last_book.ask_valid === 1'b1);
+    // Full-scale cross, the widest spread the format can carry.
+    do_reset();
+    feed(EVT_ADD, 4'hC, SIDE_BID, 16'hFFFF, 16'd1);
+    feed(EVT_ADD, 4'hC, SIDE_ASK, 16'd0,    16'd1);
+    check("full-scale cross bid", last_book.bid_price === 16'hFFFF);
+    check("full-scale cross ask", last_book.ask_price === 16'd0);
+
+    // --- back-to-back traffic, valid never dropped ----------------------
+    // Every other phase in this file idles a cycle between events, so the
+    // stage was never driven at full rate. A book that read its own output
+    // register instead of its state array would pass all of them and fail
+    // here.
+    do_reset();
+    push(EVT_ADD,   4'hD, SIDE_BID, 16'd500, 16'd10);
+    push(EVT_ADD,   4'hD, SIDE_BID, 16'd500, 16'd10);
+    push(EVT_ADD,   4'hD, SIDE_BID, 16'd500, 16'd10);
+    push(EVT_ADD,   4'hD, SIDE_BID, 16'd510, 16'd7);
+    push(EVT_TRADE, 4'hD, SIDE_BID, 16'd510, 16'd3);
+    push(EVT_ADD,   4'hD, SIDE_ASK, 16'd600, 16'd4);
+    push(EVT_ADD,   4'hD, SIDE_ASK, 16'd600, 16'd6);
+    drain();
+    check($sformatf("back-to-back: bid price (got %0d)", last_book.bid_price),
+          last_book.bid_price === 16'd510);
+    check($sformatf("back-to-back: bid qty (got %0d)", last_book.bid_qty),
+          last_book.bid_qty === 16'd4);
+    check($sformatf("back-to-back: ask qty (got %0d)", last_book.ask_qty),
+          last_book.ask_qty === 16'd10);
+    // Consecutive events on DIFFERENT symbols, at full rate: the read of
+    // book[symbol] and the write to it must both use the same index.
+    do_reset();
+    for (int sym = 0; sym < N_SYMBOLS; sym++)
+      push(EVT_ADD, SYMBOL_W'(sym), SIDE_BID, PRICE_W'(1000 + sym), QTY_W'(sym + 1));
+    for (int sym = 0; sym < N_SYMBOLS; sym++)
+      push(EVT_ADD, SYMBOL_W'(sym), SIDE_ASK, PRICE_W'(2000 + sym), QTY_W'(sym + 1));
+    drain();
+    // Read every symbol back with a no-op event that cannot change it.
+    for (int sym = 0; sym < N_SYMBOLS; sym++) begin
+      feed(EVT_CANCEL, SYMBOL_W'(sym), SIDE_BID, 16'd7, 16'd0);
+      check($sformatf("all-symbols: sym %0d bid price", sym),
+            last_book.bid_price === PRICE_W'(1000 + sym));
+      check($sformatf("all-symbols: sym %0d bid qty", sym),
+            last_book.bid_qty === QTY_W'(sym + 1));
+      check($sformatf("all-symbols: sym %0d ask price", sym),
+            last_book.ask_price === PRICE_W'(2000 + sym));
+      check($sformatf("all-symbols: sym %0d ask qty", sym),
+            last_book.ask_qty === QTY_W'(sym + 1));
+    end
+
+    // --- the update rules again, under randomized backpressure ----------
+    // m_ready was tied high for this whole testbench, which made every stall
+    // property bound into top_of_book vacuous: a stage that reloaded its
+    // output register during a stall, or that applied an event to the book
+    // twice while waiting, would have passed everything above.
+    do_reset();
+    bp_enable = 1'b1;
+    feed(EVT_ADD, 4'hE, SIDE_BID, 16'd300, 16'd10);
+    check("stalled: add establishes", last_book.bid_qty === 16'd10);
+    feed(EVT_ADD, 4'hE, SIDE_BID, 16'd300, 16'd10);
+    // A book that applied the event on every stalled cycle would read 30+.
+    check("stalled: accumulate applied exactly once", last_book.bid_qty === 16'd20);
+    feed(EVT_TRADE, 4'hE, SIDE_BID, 16'd300, 16'd5);
+    check("stalled: trade applied exactly once", last_book.bid_qty === 16'd15);
+    feed(EVT_ADD, 4'hE, SIDE_ASK, 16'd400, 16'd9);
+    feed(EVT_CANCEL, 4'hE, SIDE_ASK, 16'd400, 16'd0);
+    check("stalled: cancel clears", last_book.ask_valid === 1'b0);
+    check("stalled: cancel left the bid alone", last_book.bid_qty === 16'd15);
+    begin
+      event_err_t e;
+      e = '0; e.gap = 1'b1;
+      feed(EVT_ADD, 4'hE, SIDE_BID, 16'd9999, 16'd1, e);
+      check("stalled: flagged event withheld", last_book.bid_price === 16'd300);
+      check("stalled: flagged event sets book_stale", last_stale === 1'b1);
+    end
+    // Back-to-back traffic while the output stalls: the only configuration
+    // where s_ready falls with a fresh event already offered.
+    push(EVT_ADD, 4'hF, SIDE_BID, 16'd50, 16'd1);
+    push(EVT_ADD, 4'hF, SIDE_BID, 16'd50, 16'd1);
+    push(EVT_ADD, 4'hF, SIDE_BID, 16'd50, 16'd1);
+    push(EVT_ADD, 4'hF, SIDE_BID, 16'd50, 16'd1);
+    push(EVT_ADD, 4'hF, SIDE_BID, 16'd50, 16'd1);
+    push(EVT_ADD, 4'hF, SIDE_BID, 16'd50, 16'd1);
+    push(EVT_ADD, 4'hF, SIDE_BID, 16'd50, 16'd1);
+    push(EVT_ADD, 4'hF, SIDE_BID, 16'd50, 16'd1);
+    drain();
+    check($sformatf("stalled back-to-back: eight adds landed once each (got %0d)",
+                    last_book.bid_qty),
+          last_book.bid_qty === 16'd8);
+    bp_enable = 1'b0;
+    @(negedge clk);
+    m_ready = 1'b1;
+    if (stall_cycles == 0) begin
+      errors++;
+      $error("FAIL: backpressure never asserted -- the stall properties were vacuous this run");
+    end
+    $display("INFO: backpressure phase stalled for %0d cycles", stall_cycles);
+
     if (errors != 0) $fatal(1, "FAIL: %0d checks failed", errors);
-    $display("PASS: tb_top_of_book");
+    $display("PASS: tb_top_of_book (%0d stall cycles)", stall_cycles);
     $finish;
   end
 

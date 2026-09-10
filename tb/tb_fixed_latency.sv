@@ -104,6 +104,10 @@ module tb_fixed_latency;
 
   longint unsigned ingress_q [$];
   longint unsigned lat_min, lat_max, lat_sum;
+
+  // Datapath coverage. Without these the run happily measured 5 cycles across
+  // a feature engine that emitted zeros for every one of 2000 events.
+  int cov_two_sided, cov_imb_nonzero, cov_mom_nonzero, cov_spread_nonzero;
   int unsigned     measured;
   int unsigned     hist [0:15];      // latency in cycles -> count
   int              errors;
@@ -112,6 +116,10 @@ module tb_fixed_latency;
   always_ff @(posedge clk) begin
     if (rst_n) begin
       if (m_valid && m_ready) begin
+        if (!m_feat.book_empty)     cov_two_sided++;
+        if (m_feat.imbalance != '0) cov_imb_nonzero++;
+        if (m_feat.momentum  != '0) cov_mom_nonzero++;
+        if (m_feat.spread    != '0) cov_spread_nonzero++;
         if (ingress_q.size() == 0) begin
           errors++;
           $error("FAIL: output at cycle %0d with nothing in flight", cycle);
@@ -152,7 +160,14 @@ module tb_fixed_latency;
     roll = rand_range(rng, 0, 99);
     t  = (roll < 6) ? 8'hFF : 8'(1 + (i % 3));
     roll = rand_range(rng, 0, 99);
-    sd = (roll < 6) ? 2'b11 : ((i % 2 != 0) ? SIDE_BID : SIDE_ASK);
+    // Side must NOT be keyed on i alone. symbol is i mod 16 and 16 is even,
+    // so any i-parity rule gives every symbol exactly one side forever,
+    // both_sides is never true, and the whole feature datapath -- ROM,
+    // multiply, clamps, spread, midpoint, momentum -- stays inert while the
+    // run still reports PASS. That is exactly what this testbench did before:
+    // 2000 events, book_empty on all 2000 outputs, imbalance identically zero.
+    // The coverage floor at the end of the run now fails if that recurs.
+    sd = (roll < 6) ? 2'b11 : ((rand_range(rng, 0, 1) == 0) ? SIDE_BID : SIDE_ASK);
     roll = rand_range(rng, 0, 99);
     rv = (roll < 4) ? 2'b01 : 2'b00;
 
@@ -173,6 +188,8 @@ module tb_fixed_latency;
     lat_min  = 64'hFFFF_FFFF_FFFF_FFFF;
     lat_max  = 0;
     lat_sum  = 0;
+    cov_two_sided = 0; cov_imb_nonzero = 0;
+    cov_mom_nonzero = 0; cov_spread_nonzero = 0;
     measured = 0;
     errors   = 0;
     foreach (hist[i]) hist[i] = 0;
@@ -240,6 +257,27 @@ module tb_fixed_latency;
       errors++;
       $error("FAIL: latency sum %0d != %0d events x %0d cycles",
              lat_sum, measured, LATENCY_CYCLES);
+    end
+
+    // A fixed latency measured across a pipeline whose last two stages never
+    // loaded is not evidence of anything. Fail the run rather than report it.
+    $display("INFO: datapath coverage two_sided=%0d imbalance!=0=%0d momentum!=0=%0d spread!=0=%0d",
+             cov_two_sided, cov_imb_nonzero, cov_mom_nonzero, cov_spread_nonzero);
+    if (cov_two_sided == 0) begin
+      errors++;
+      $error("FAIL: no output ever had a two-sided book -- the feature engine was inert");
+    end
+    if (cov_imb_nonzero == 0) begin
+      errors++;
+      $error("FAIL: imbalance was zero on every output -- reciprocal path never exercised");
+    end
+    if (cov_mom_nonzero == 0) begin
+      errors++;
+      $error("FAIL: momentum was zero on every output -- history path never exercised");
+    end
+    if (cov_spread_nonzero == 0) begin
+      errors++;
+      $error("FAIL: spread was zero on every output");
     end
 
     if (errors != 0) $fatal(1, "FAIL: %0d latency errors (seed=%0d)", errors, seed);

@@ -62,7 +62,18 @@ module top_of_book
     if (trusted) begin
       unique case (s_event.etype)
 
-        EVT_ADD: begin
+        // An ADD carrying no size cannot establish or improve a level. Without
+        // this guard it replaces a real sized best with a phantom zero-size
+        // level, and feature_engine then sees one side at zero against a sized
+        // other side: book_empty stays clear and imbalance computes to exactly
+        // +/-1.0, the largest magnitude the policy engine can receive, from an
+        // event that carried no size. generate_events.py draws qty from the
+        // full field range, so zeros do occur and no upstream flag filters
+        // them.
+        //
+        // Together with TRADE clearing a side at zero, this makes
+        // "side valid" imply "size > 0" for the whole design.
+        EVT_ADD: if (s_event.qty != '0) begin
           if (s_event.side == SIDE_BID) begin
             if (!cur.bid_valid || (s_event.price > cur.bid_price)) begin
               nxt.bid_valid = 1'b1;

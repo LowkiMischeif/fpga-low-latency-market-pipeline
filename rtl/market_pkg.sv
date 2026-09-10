@@ -115,12 +115,12 @@ package market_pkg;
   //   ------------  ------  ----------------  ------------------------------
   //   LAT_DECODE         1  event_decoder     field slice + encoding checks
   //   LAT_SEQCHK         1  sequence_checker  gap / stale classification
-  //   LAT_TOB            1  top_of_book       best bid/ask update   [planned]
-  //   LAT_FEATURE        2  feature_engine    spread, imbalance     [planned]
+  //   LAT_TOB            1  top_of_book       best bid/ask update
+  //   LAT_FEATURE        2  feature_engine    spread, imbalance
   //   LAT_POLICY         2  policy_engine     MAC tree + compare    [planned]
   //   LAT_RISK           1  risk_gate         limit checks          [planned]
   //   ------------  ------
-  //   LATENCY_CYCLES     2  <- sum of stages implemented today
+  //   LATENCY_CYCLES     5  <- sum of stages implemented today
   //
   // Stages marked [planned] are not yet in rtl/ and contribute nothing. When
   // a stage lands, its constant and its row here are added in the same commit
