@@ -151,25 +151,46 @@ def _signed16(x: int) -> int:
     return x - SEQ_MOD_16 if x >= (SEQ_MOD_16 >> 1) else x
 
 
-def classify(seqs):
+STALE_RESYNC_LIMIT_REF = 16   # must match rtl/sequence_checker.sv
+
+
+def classify(seqs, trusted=None):
     """Return (gap, stale, missed) per event using the spec's rule.
 
-    diff = rx - expect in 16-bit modular arithmetic, read as signed:
-    positive is a gap, negative is stale, zero is in order. The first event
-    after reset is adopted as the baseline.
+    Written from the specified behaviour rather than from generate_events.py,
+    so it is an independent check on the generator rather than a restatement
+    of it.
+
+    diff = rx - expect in 16-bit modular arithmetic, read as signed: positive
+    is a gap, negative is stale, zero is in order.
+
+    Only a trusted event -- one with no encoding defect -- may establish the
+    baseline after reset or resync it past a gap. A malformed beat has already
+    failed its field checks, so its seq is not trustworthy either; it rides the
+    ordinary +1 when it lands exactly in order and is otherwise not allowed to
+    move the expectation. A run of STALE_RESYNC_LIMIT_REF stale events forces
+    a resync, which bounds the damage from sequence aliasing beyond +/-32767.
+
+    `trusted` defaults to all-True, which reproduces the plain sequence rule.
     """
+    if trusted is None:
+        trusted = [True] * len(seqs)
     out = []
     expect = None
-    for rx in seqs:
+    stale_run = 0
+    for rx, ok in zip(seqs, trusted):
         if expect is None:
             out.append((False, False, 0))
-            expect = (rx + 1) % SEQ_MOD_16
+            if ok:
+                expect = (rx + 1) % SEQ_MOD_16
             continue
         diff = _signed16(rx - expect)
         gap, stale = diff > 0, diff < 0
-        missed = diff if gap else 0
-        if diff >= 0:
+        missed = diff if (gap and ok) else 0
+        force_resync = stale and stale_run >= STALE_RESYNC_LIMIT_REF - 1
+        if diff == 0 or (gap and ok) or force_resync:
             expect = (rx + 1) % SEQ_MOD_16
+        stale_run = stale_run + 1 if (stale and not force_resync) else 0
         out.append((gap, stale, missed))
     return out
 
@@ -177,7 +198,8 @@ def classify(seqs):
 def test_flags_match_independent_classifier():
     evs = generate(n=1000, seed=17, gap_rate=0.08, stale_rate=0.06,
                    bad_type_rate=0.02, bad_side_rate=0.02, bad_rsv_rate=0.01)
-    ref = classify([e["seq"] for e in evs])
+    ref = classify([e["seq"] for e in evs],
+                   [not (e["bad_type"] or e["bad_side"] or e["bad_rsv"]) for e in evs])
     for i, (e, (gap, stale, _missed)) in enumerate(zip(evs, ref)):
         assert e["gap"] == gap, f"event {i}: generator gap={e['gap']}, spec rule says {gap}"
         assert e["stale"] == stale, f"event {i}: generator stale={e['stale']}, spec rule says {stale}"
@@ -190,7 +212,8 @@ def test_flags_match_independent_classifier_across_the_wrap():
                    start_seq=SEQ_MOD_16 - 64)
     seqs = [e["seq"] for e in evs]
     assert max(seqs) > SEQ_MOD_16 - 32 and min(seqs) < 1000, "trace did not cross the wrap"
-    ref = classify(seqs)
+    ref = classify(seqs,
+                   [not (e["bad_type"] or e["bad_side"] or e["bad_rsv"]) for e in evs])
     for i, (e, (gap, stale, _missed)) in enumerate(zip(evs, ref)):
         assert e["gap"] == gap, f"event {i} (seq {e['seq']}): gap disagrees across the wrap"
         assert e["stale"] == stale, f"event {i} (seq {e['seq']}): stale disagrees across the wrap"
@@ -209,7 +232,8 @@ def test_injected_defects_stay_inside_the_signed_comparison_window():
     """
     evs = generate(n=3000, seed=29, gap_rate=0.15, stale_rate=0.15,
                    bad_type_rate=0.0, bad_side_rate=0.0, bad_rsv_rate=0.0)
-    ref = classify([e["seq"] for e in evs])
+    ref = classify([e["seq"] for e in evs],
+                   [not (e["bad_type"] or e["bad_side"] or e["bad_rsv"]) for e in evs])
     gaps = [m for (g, _s, m) in ref if g]
     assert gaps, "no gaps generated"
     assert max(gaps) <= 8, f"gap of {max(gaps)} exceeds the documented 1..8 range"

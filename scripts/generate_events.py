@@ -41,6 +41,9 @@ FIELDS = {
 VALID_TYPES = (1, 2, 3)   # EVT_ADD, EVT_CANCEL, EVT_TRADE
 VALID_SIDES = (1, 2)      # SIDE_BID, SIDE_ASK
 
+# Must match STALE_RESYNC_LIMIT in rtl/sequence_checker.sv.
+STALE_RESYNC_LIMIT = 16
+
 
 def encode_event(etype: int, symbol: int, side: int, price: int,
                  qty: int, seq: int, rsv: int = 0) -> int:
@@ -71,29 +74,33 @@ def generate(n: int, seed: int, gap_rate: float = 0.0, stale_rate: float = 0.0,
 
     Sequence model: `expect` is what an in-order feed would send next. A gap
     skips forward and resyncs the expectation past the hole; a stale event
-    replays an older number without advancing the expectation. This mirrors
-    sequence_checker.sv exactly -- if one changes, so must the other.
+    replays an older number without advancing the expectation.
+
+    Crucially, only a TRUSTED event -- one with no encoding defect -- may
+    resync the baseline or establish it after reset. A malformed beat has
+    already failed its field checks, so its seq is not trustworthy either; it
+    may ride the ordinary +1 when it lands exactly in order, but it may not
+    redefine where the feed is. A long run of stale events forces a resync
+    after STALE_RESYNC_LIMIT, which bounds the damage from sequence aliasing.
+
+    This mirrors sequence_checker.sv exactly -- if one changes, so must the
+    other. That is a real coupling and it is the point: the golden model has
+    to be a model OF the RTL, not an independent guess at what it should do.
     """
     rng = random.Random(seed)
     events: list[dict] = []
     expect = start_seq % SEQ_MOD
     primed = False
+    stale_run = 0
+
+    def signed_diff(rx: int, exp: int) -> int:
+        """16-bit modular difference, read as signed -- mirrors the RTL."""
+        d = (rx - exp) % SEQ_MOD
+        return d - SEQ_MOD if d >= (SEQ_MOD // 2) else d
 
     for _ in range(n):
-        gap = stale = False
-        if primed and rng.random() < stale_rate:
-            # Replay something already seen. Does not advance the expectation.
-            seq = (expect - rng.randint(1, 8)) % SEQ_MOD
-            stale = True
-        elif primed and rng.random() < gap_rate:
-            seq = (expect + rng.randint(1, 8)) % SEQ_MOD
-            expect = (seq + 1) % SEQ_MOD
-            gap = True
-        else:
-            seq = expect
-            expect = (seq + 1) % SEQ_MOD
-        primed = True
-
+        # Encoding defects are decided FIRST, because whether the event is
+        # trustworthy determines what it is allowed to do to the expectation.
         if rng.random() < bad_type_rate:
             etype, bad_type = rng.choice([0, 4, 5, 0x7F, 0xFF]), True
         else:
@@ -108,6 +115,35 @@ def generate(n: int, seed: int, gap_rate: float = 0.0, stale_rate: float = 0.0,
             rsv, bad_rsv = rng.randint(1, 3), True
         else:
             rsv, bad_rsv = 0, False
+
+        trusted = not (bad_type or bad_side or bad_rsv)
+
+        # Choose the sequence number this event will carry.
+        if primed and rng.random() < stale_rate:
+            seq = (expect - rng.randint(1, 8)) % SEQ_MOD
+        elif primed and rng.random() < gap_rate:
+            seq = (expect + rng.randint(1, 8)) % SEQ_MOD
+        else:
+            seq = expect
+
+        # Classify, then update state exactly as sequence_checker.sv does.
+        diff = signed_diff(seq, expect)
+        gap = primed and diff > 0
+        stale = primed and diff < 0
+        force_resync = stale and stale_run >= STALE_RESYNC_LIMIT - 1
+
+        if not primed:
+            if trusted:
+                expect = (seq + 1) % SEQ_MOD
+                primed = True
+        elif diff == 0:
+            expect = (seq + 1) % SEQ_MOD
+        elif gap and trusted:
+            expect = (seq + 1) % SEQ_MOD
+        elif force_resync:
+            expect = (seq + 1) % SEQ_MOD
+
+        stale_run = stale_run + 1 if (stale and not force_resync) else 0
 
         symbol = rng.randrange(1 << FIELDS["symbol"][1])
         price = rng.randrange(1 << FIELDS["price"][1])

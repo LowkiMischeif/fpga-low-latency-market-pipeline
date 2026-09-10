@@ -24,6 +24,8 @@ module tb_decode_validate;
   import market_pkg::*;
 
   localparam int MAX_EVENTS = 8192;
+  // Must match STALE_RESYNC_LIMIT in rtl/sequence_checker.sv.
+  localparam int STALE_RESYNC_LIMIT = 16;
 
   logic clk = 1'b0, rst_n = 1'b0;
   always #5 clk = ~clk;
@@ -35,6 +37,7 @@ module tb_decode_validate;
   event_err_t         d_err, m_err;
   logic               d_valid, d_ready, m_valid, m_ready;
   logic [CNT_W-1:0]   gap_count, stale_count, missed_total, bad_event_count;
+  logic [CNT_W-1:0]   resync_count;
 
   event_decoder u_dec (
     .clk(clk), .rst_n(rst_n),
@@ -47,7 +50,8 @@ module tb_decode_validate;
     .s_event(d_event), .s_err(d_err), .s_valid(d_valid), .s_ready(d_ready),
     .m_event(m_event), .m_err(m_err), .m_valid(m_valid), .m_ready(m_ready),
     .gap_count(gap_count), .stale_count(stale_count),
-    .missed_total(missed_total), .bad_event_count(bad_event_count)
+    .missed_total(missed_total), .bad_event_count(bad_event_count),
+    .resync_count(resync_count)
   );
 
   // No bind statements here: tb/bind_assertions.sv binds the checker to both
@@ -144,6 +148,17 @@ module tb_decode_validate;
   //
   // with ">" and "<" evaluated on the 16-bit modular difference read as
   // signed, and with the first event after reset adopted as the baseline.
+  //
+  // Trust: only an event with no encoding defect may establish the baseline
+  // or resync past a gap, and only such an event moves gap telemetry. A
+  // malformed beat has already failed its field checks, so its seq field is
+  // not trustworthy either -- it rides the ordinary +1 when it lands exactly
+  // in order and is otherwise not allowed to move the expectation. Without
+  // this, one corrupt beat redefines the feed's sequence origin and every
+  // legitimate event after it reads as stale.
+  //
+  // A run of STALE_RESYNC_LIMIT stale events forces a resync, bounding the
+  // damage from sequence aliasing beyond the +/-32767 window.
   // ------------------------------------------------------------------
   // One disagreement between the golden CSV and the reference model, reported
   // with enough context to find the row in the CSV by eye.
@@ -161,11 +176,14 @@ module tb_decode_validate;
     logic [SEQ_W-1:0]        rx, expect_ref;
     logic signed [SEQ_W-1:0] diff;
     bit                      primed_ref;
-    bit                      r_btype, r_bside, r_brsv;
+    bit                      r_btype, r_bside, r_brsv, r_trusted;
+    bit                      r_force_resync;
+    int                      r_stale_run;
     int                      audit_errs;
 
     expect_ref       = '0;
     primed_ref       = 1'b0;
+    r_stale_run      = 0;
     ref_gap_count    = 0;
     ref_stale_count  = 0;
     ref_missed_total = 0;
@@ -180,13 +198,30 @@ module tb_decode_validate;
       r_bside = !(w[51:50] inside {2'b01, 2'b10});
       r_brsv  = (w[1:0] != 2'b00);
 
+      r_trusted = !(r_btype || r_bside || r_brsv);
+
       diff = $signed(rx - expect_ref);
       ref_gap[i]   = primed_ref && (diff > 0);
       ref_stale[i] = primed_ref && (diff < 0);
-      if (!primed_ref || (diff >= 0)) expect_ref = rx + 1'b1;
-      primed_ref = 1'b1;
 
-      if (ref_gap[i]) begin
+      r_force_resync = ref_stale[i] && (r_stale_run >= STALE_RESYNC_LIMIT - 1);
+
+      if (!primed_ref) begin
+        if (r_trusted) begin
+          expect_ref = rx + 1'b1;
+          primed_ref = 1'b1;
+        end
+      end else if (diff == '0) begin
+        expect_ref = rx + 1'b1;
+      end else if (ref_gap[i] && r_trusted) begin
+        expect_ref = rx + 1'b1;
+      end else if (r_force_resync) begin
+        expect_ref = rx + 1'b1;
+      end
+
+      r_stale_run = (ref_stale[i] && !r_force_resync) ? r_stale_run + 1 : 0;
+
+      if (ref_gap[i] && r_trusted) begin
         ref_gap_count++;
         ref_missed_total += longint'(diff);
       end

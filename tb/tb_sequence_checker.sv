@@ -23,6 +23,7 @@ module tb_sequence_checker;
   event_err_t       s_err, m_err;
   logic             s_valid, s_ready, m_valid, m_ready;
   logic [CNT_W-1:0] gap_count, stale_count, missed_total, bad_event_count;
+  logic [CNT_W-1:0] resync_count;
 
   sequence_checker dut (.*);
 
@@ -293,11 +294,86 @@ module tb_sequence_checker;
       // still forwarded rather than dropped.
       e = '0; e.bad_type = 1'b1;
       feed(16'd110, e);               // 5 missed
-      check("bad+gap: gap flagged",      last_err.gap === 1'b1);
-      check("bad+gap: bad_type kept",    last_err.bad_type === 1'b1);
-      check("bad+gap: gap_count 1",      gap_count === 32'd1);
-      check("bad+gap: missed 5",         missed_total === 32'd5);
+      // A malformed event is still CLASSIFIED against the expectation, so the
+      // gap flag is informational and still set. But it must not move gap
+      // telemetry: a garbage seq field could otherwise inflate missed_total
+      // by up to 32767 from a single corrupt beat.
+      check("bad+gap: gap flagged",       last_err.gap === 1'b1);
+      check("bad+gap: bad_type kept",     last_err.bad_type === 1'b1);
+      check("bad+gap: gap_count unmoved", gap_count === 32'd0);
+      check("bad+gap: missed unmoved",    missed_total === 32'd0);
       check("bad+gap: bad_event_count 5", bad_event_count === 32'd5);
+    end
+
+    // --- a malformed beat must not redefine the sequence baseline -----
+    // rtl-skeptic-reviewer's scenario: without the trust rule, one corrupt
+    // event with a garbage seq resyncs expect_seq to that garbage, and the
+    // next legitimate event reads as stale forever after.
+    begin
+      event_err_t bad;
+      bad = '0;
+      bad.bad_rsv = 1'b1;
+      do_reset();
+      feed(16'd100);
+      check("trust: baseline established", last_err.gap === 1'b0);
+      feed(16'd101);
+      check("trust: in order", last_err.gap === 1'b0 && last_err.stale === 1'b0);
+      // The garbage seq must land FORWARD of the expectation so it is
+      // classified as a gap -- that is the path that resyncs expect_seq, and
+      // therefore the path the trust rule has to gate. A backward garbage
+      // value reads as stale, which never resynced in the first place and so
+      // would not exercise the rule at all.
+      feed(16'd20000, bad);
+      check("trust: garbage flagged bad",  last_err.bad_rsv === 1'b1);
+      check("trust: garbage reads as gap", last_err.gap === 1'b1);
+      check("trust: gap_count unmoved",    gap_count === 32'd0);
+      check("trust: missed_total unmoved", missed_total === 32'd0);
+      feed(16'd102);
+      check("trust: next good event is in order",
+            last_err.gap === 1'b0 && last_err.stale === 1'b0);
+
+      // And the backward-garbage case, which must also leave the baseline
+      // alone: after it, 103 is still the expected number.
+      feed(16'hDEAD, bad);
+      check("trust: backward garbage flagged", last_err.bad_rsv === 1'b1);
+      feed(16'd103);
+      check("trust: baseline survived backward garbage",
+            last_err.gap === 1'b0 && last_err.stale === 1'b0);
+    end
+
+    // --- a malformed FIRST event must not establish the baseline ------
+    begin
+      event_err_t bad;
+      bad = '0;
+      bad.bad_type = 1'b1;
+      do_reset();
+      feed(16'hBEEF, bad);
+      check("trust: bad first event not a gap", last_err.gap === 1'b0);
+      feed(16'd7000);
+      check("trust: first trusted event sets baseline, not a gap",
+            last_err.gap === 1'b0 && last_err.stale === 1'b0);
+      feed(16'd7001);
+      check("trust: baseline is the trusted one", last_err.gap === 1'b0);
+    end
+
+    // --- the stale watchdog bounds aliasing damage --------------------
+    // A forward jump of 32768 aliases to stale (the 16-bit window cannot tell
+    // the two apart). Without the watchdog the checker would report every one
+    // of the next 32768 events as stale while gap_count sat still. After
+    // STALE_RESYNC_LIMIT consecutive stale events it adopts the current
+    // sequence number instead, and counts that it did so.
+    begin
+      do_reset();
+      feed(16'd1000);
+      check("watchdog: baseline", last_err.stale === 1'b0);
+      for (int k = 0; k < 15; k++) feed(16'd500 + SEQ_W'(k));
+      check("watchdog: still stale before the limit", last_err.stale === 1'b1);
+      check("watchdog: no resync yet", resync_count === 32'd0);
+      feed(16'd515);
+      check("watchdog: resync counted", resync_count === 32'd1);
+      feed(16'd516);
+      check("watchdog: recovered, next event in order",
+            last_err.gap === 1'b0 && last_err.stale === 1'b0);
     end
 
     // --- 16-bit wraparound is in order, NOT a 65535-event gap ---------

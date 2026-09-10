@@ -223,9 +223,33 @@ because the testbench must target them:
   as its baseline instead of expecting zero, so a trace that starts mid-stream
   does not report a spurious gap on its first event.
 
+**Trust.** Only an event with no encoding defect may establish the baseline
+after reset or resync it past a gap, and only such an event moves the gap
+counters. A malformed beat has already failed its field checks, so its `seq`
+is not trustworthy either: it rides the ordinary `+1` when it lands exactly in
+order, and is otherwise not allowed to move the expectation. Without this, one
+corrupt beat redefines the feed's sequence origin and every legitimate event
+after it reads as `stale`.
+
+**Aliasing beyond the window, and its bound.** A 16-bit modular comparison
+cannot distinguish a forward jump of 32768 or more from a backward one — the
+information is not on the wire. Both directions alias: a forward jump of 32768
+reads as `stale`, and a backward jump of 40000 reads as a gap of 25536 that
+drags the expectation backwards. The window cannot be widened without a wider
+`seq_id` or an epoch counter, neither of which this wire format has.
+
+What is bounded is the consequence. Left alone, the first case never recovers:
+a stale event does not advance `expect_seq`, so the checker freezes and reports
+the next 32768 events as stale while `gap_count` and `missed_total` sit still —
+telemetry insisting the feed is clean while nothing gets through. After
+`STALE_RESYNC_LIMIT` (16) consecutive stale events the checker abandons its
+baseline and adopts the current sequence number, so any aliasing costs at most
+16 events instead of 32768. Each forced resync increments `resync_count`, so
+the condition is visible rather than silent.
+
 Counters exposed as output ports: `gap_count`, `stale_count`, `missed_total`,
-`bad_event_count`. All saturate rather than wrap, so telemetry cannot silently
-roll over.
+`bad_event_count`, `resync_count`. All saturate rather than wrap, so telemetry
+cannot silently roll over.
 
 ### 5.3 `top_of_book.sv` — 1 cycle
 
