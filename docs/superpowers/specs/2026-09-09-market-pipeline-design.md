@@ -186,12 +186,12 @@ checks it moves in the same commit.
 //   ------------  ------  ----------------  ----------------------------
 //   LAT_DECODE         1  event_decoder     field slice + encoding checks
 //   LAT_SEQCHK         1  sequence_checker  gap / stale classification
-//   LAT_TOB            1  top_of_book       best bid/ask update      [planned]
-//   LAT_FEATURE        2  feature_engine    spread, imbalance        [planned]
+//   LAT_TOB            1  top_of_book       best bid/ask update
+//   LAT_FEATURE        2  feature_engine    spread, imbalance
 //   LAT_POLICY         2  policy_engine     MAC tree + compare       [planned]
 //   LAT_RISK           1  risk_gate         limit checks             [planned]
 //   ------------  ------
-//   LATENCY_CYCLES     2  <- sum of stages implemented today
+//   LATENCY_CYCLES     5  <- sum of stages implemented today
 //
 // Stages marked [planned] are not yet in rtl/ and contribute nothing. When a
 // stage lands, its constant and its row here are added in the same commit as
@@ -270,10 +270,38 @@ cannot silently roll over.
 
 ### 5.3 `top_of_book.sv` — 1 cycle
 
-Best bid/ask price and size per symbol, `N_SYMBOLS` entries. Update rules are
-stated explicitly per event type and each rule gets a directed test. Reset
-clears the book to a defined empty state distinguishable from a real price of
-zero.
+Best bid/ask price and size per symbol, `N_SYMBOLS` entries. Each rule below
+gets a directed test.
+
+**Trust gate.** The book updates only on an event with **no** flag set —
+`bad_type`, `bad_side`, `bad_rsv`, `gap` and `stale` all withhold the update.
+The event still passes through with its flags intact, and the output carries a
+`book_stale` bit saying the book did not ingest it. This is the same rule
+`sequence_checker` already applies to `expect_seq`: state the pipeline will act
+on is never built from data the pipeline has already declared untrustworthy.
+`risk_gate` still decides what the *decision* does about the flags; this is
+only about what the book believes.
+
+**Update rules — price-level replace.** This is explicitly a top-of-book
+model, not an order book: only the best level per side is tracked, so an event
+at any other price is not representable and is ignored rather than guessed at.
+
+| Event | Bid side | Ask side |
+|---|---|---|
+| `ADD` | `price > best_bid` → replace price and size; `price == best_bid` → `size += qty` (saturating) | mirror with `<` |
+| `CANCEL` | `price == best_bid` → clear the side | mirror |
+| `TRADE` | `price == best_bid` → `size -= qty` (floor at 0); size reaching 0 clears the side | mirror |
+
+An `ADD` that is worse than the current best, and a `CANCEL` or `TRADE` at any
+price other than the best, have **no effect**. That is a real limitation of a
+top-of-book model and it is the reason this is stated rather than assumed: a
+cancel at a level we do not track cannot be honoured, and pretending otherwise
+would corrupt the size.
+
+**Empty state.** A cleared side is a distinct empty sentinel, not price zero —
+zero is a legal price in Q14.2. Reset clears every symbol to empty. The
+`book_empty` flag consumed by `feature_engine` comes from this sentinel, so
+"no data" and "a real price of zero" are never confused.
 
 ### 5.4 `feature_engine.sv` — 2 cycles
 
@@ -285,6 +313,23 @@ zero.
   multiply** — fixed latency, no variable-iteration divider, no stall. A
   restoring shift-subtract divider was rejected: it either costs one cycle per
   quotient bit or becomes the critical path.
+
+  Sizing: the denominator is normalised by its leading-zero count, the top 8
+  bits index a **256 × 16 ROM**, and the result is multiplied and shifted back:
+
+  ```
+  den         = Q_bid + Q_ask                  (17 bits)
+  norm, shift = clz_normalise(den)
+  recip       = RECIP_ROM[norm[15:8]]          (256 x 16)
+  imbalance   = ((Q_bid - Q_ask) * recip) >>> shift
+  ```
+
+  Worst-case error is about 0.4% of full scale, which is below what the
+  downstream fixed-point policy can resolve. One ROM plus one multiply fits
+  inside `LAT_FEATURE = 2` on the slowest Artix-7 speed grade. A 10-bit index
+  was rejected as more precise than the policy can use, on a path that is
+  already the stage's longest; a 6-bit index at ~1.6% error was rejected as
+  large enough to matter once the policy weights multiply it.
   **Divide-by-zero (empty book, `Q_bid + Q_ask == 0`) returns a defined
   neutral zero**, never an X, and sets a `book_empty` flag so the policy layer
   can tell "balanced" from "no data".
