@@ -18,6 +18,7 @@ Deterministic SystemVerilog market-event pipeline: decode → sequence check →
 - Lint: `verilator --lint-only -Wall`
 - Sim: Vivado xsim via `scripts/run_sim.tcl` (Makefile target `make sim`)
 - Python: `pip install -r requirements.txt`, tests via `pytest`
+- Ponytail runs at lite in this repo.
 
 ## Workflow
 1. Any change under `rtl/` → run `rtl-verification-engineer` to add/update tests and assertions.
