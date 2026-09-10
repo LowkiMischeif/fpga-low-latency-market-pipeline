@@ -354,15 +354,26 @@ zero is a legal price in Q14.2. Reset clears every symbol to empty. The
   neutral zero**, never an X, and sets a `book_empty` flag so the policy layer
   can tell "balanced" from "no data".
 
+  **One gating rule covers every feature:** `book_empty == 1` implies
+  `spread`, `mid`, `imbalance` and `momentum` are all zero. No feature is
+  gated on a different condition. Two rules that agree only by accident are
+  still two rules, and an earlier version had `spread` and `mid` gated on
+  "both sides valid" while `imbalance` and `momentum` were gated on
+  `book_empty` — which diverge when two valid sides both rest zero size.
+
   **The result must be clamped to +/-1.0.** Imbalance is mathematically
   bounded to that range, but the approximation overshoots it: rounding to a
   bucket midpoint makes the reciprocal too large whenever the low index bits
   exceed 128. Measured maximum pre-saturation value is **16415** at
   `Q_bid = 32895, Q_ask = 0`, against `IMB_ONE = 16384`. Without the clamp the
   policy engine would see an imbalance greater than 1.0.
-- Momentum: signed difference between the current midprice and the midprice
-  `MOMENTUM_LAG` updates ago, held in a small shift register sized by a named
-  constant. Fixed depth, fixed latency, saturating.
+- Momentum: signed difference between the current midprice and that symbol's
+  midprice at its previous book update. One step, held per symbol in a
+  midprice register plus a validity bit (the first update for a symbol has no
+  predecessor and reports zero momentum, not a jump from zero),
+  fixed latency. A deeper horizon would be a shift register per symbol; it is
+  not built until the policy engine demonstrates it needs one, and there is
+  deliberately no unwired depth constant standing in for it.
 
 ### 5.5 `policy_engine.sv` — 2 cycles
 
@@ -378,7 +389,22 @@ point of the "AI customization" claim and it is asserted, not assumed.
 
 Rejects with a reason code on: maximum long position, maximum short position,
 maximum order quantity, spread guard, kill switch, and any event carrying
-`gap`, `stale`, or a malformed flag from upstream. Reason codes are an enum in
+`gap`, `stale`, or a malformed flag from upstream.
+
+**The spread guard must be qualified by `!book_empty`.** Under §5.4's single
+gating rule an empty book reports `spread == 0`, which is the tightest spread
+representable and therefore passes any `reject if spread > X` test — the guard
+would be wide open exactly when there is no book to trade against. `spread == 0`
+is also what a genuinely locked book produces, so spread alone cannot separate
+"no market" from "locked market"; `book_empty` is the discriminator and the
+risk gate must read it.
+
+Note also what `book_empty` currently conflates: a genuinely empty book, a
+one-sided book with real resting size, and two valid sides at zero size. All
+three emit identical all-zero features, so a one-sided book with 5000 resting
+bids is bit-identical downstream to a reset book. If the policy engine turns
+out to need that distinction, the fix is to carry `bid_valid`/`ask_valid` in
+`feature_t` rather than to loosen the gating rule. Reason codes are an enum in
 `market_pkg.sv` and appear in telemetry.
 
 ### 5.7 `market_pipeline_top.sv`
