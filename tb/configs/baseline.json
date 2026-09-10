@@ -1,6 +1,6 @@
 {
   "name": "baseline",
-  "note": "Spread-led, liquidity-provision shaped: buy when the quoted spread is wide, sell when it is tight. Ignores book imbalance entirely, so it trades on a different signal from tuned rather than trading less. Thresholds chosen from the measured feature range of the test stimulus (spread 12..52), not guessed.",
+  "note": "HAND-CHOSEN, not trained. Spread-led: buy when the quoted spread is wide, sell when it is tight. Thresholds picked from the measured feature range of the test stimulus (spread 12..52). It exists to be a deliberately different policy from the trained one, on a different signal -- not as a tuner output.",
   "w0": 0,
   "w_spread": 1.0,
   "w_imbalance": 0.0,

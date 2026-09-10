@@ -43,6 +43,7 @@ module tb_policy_configs;
   logic [CNT_W-1:0]   resync_count, commit_count;
 
   logic                  cfg_boundary;
+  risk_cfg_t             p_risk_cfg;
   logic [CFG_ADDR_W-1:0] cfg_addr;
   logic [CFG_DATA_W-1:0] cfg_wdata;
   logic                  cfg_we;
@@ -76,15 +77,16 @@ module tb_policy_configs;
     .m_valid(f_valid), .m_ready(f_ready));
 
   policy_engine u_pol (
-    .clk(clk), .rst_n(rst_n), .cfg(policy_cfg),
+    .clk(clk), .rst_n(rst_n), .cfg(policy_cfg), .risk_cfg_in(risk_cfg),
     .s_event(f_event), .s_err(f_err), .s_feat(f_feat),
     .s_valid(f_valid), .s_ready(f_ready),
     .m_event(p_event), .m_err(p_err), .m_feat(p_feat),
     .m_decision(p_decision), .m_score(p_score), .m_order_qty(p_order_qty),
-    .m_valid(p_valid), .m_ready(p_ready), .cfg_boundary(cfg_boundary));
+    .m_valid(p_valid), .m_ready(p_ready), .cfg_boundary(cfg_boundary),
+    .m_risk_cfg(p_risk_cfg));
 
   risk_gate u_risk (
-    .clk(clk), .rst_n(rst_n), .cfg(risk_cfg),
+    .clk(clk), .rst_n(rst_n), .cfg(p_risk_cfg),
     .s_event(p_event), .s_err(p_err), .s_feat(p_feat),
     .s_decision(p_decision), .s_score(p_score), .s_order_qty(p_order_qty),
     .s_valid(p_valid), .s_ready(p_ready),
@@ -174,11 +176,12 @@ module tb_policy_configs;
   // ------------------------------------------------------------------
   decision_e dec_a  [0:N_EVENTS-1];
   decision_e dec_b  [0:N_EVENTS-1];
+  decision_e dec_c  [0:N_EVENTS-1];
+  int        switch_at;
   reason_e   rsn_a  [0:N_EVENTS-1];
   reason_e   rsn_b  [0:N_EVENTS-1];
   int        hist_a [0:MAX_HIST-1];
   int        hist_b [0:MAX_HIST-1];
-  int        n_buy, n_sell, n_hold;
 
   int  ing_time [0:N_EVENTS-1];
   int  cycle;
@@ -188,7 +191,6 @@ module tb_policy_configs;
   always_ff @(posedge clk) if (rst_n) cycle <= cycle + 1;
 
   task automatic run_pass(input string cfg_path, input bit second);
-    int lat;
     // Full reset between passes: the book, the sequence baseline, the
     // position and the config must all start from the same place, or the
     // second pass is not the same experiment.
@@ -227,7 +229,7 @@ module tb_policy_configs;
   endtask
 
   // Scoreboard: record the decision and the measured latency for each event.
-  bit second_pass;
+  bit second_pass, third_pass;
   always_ff @(posedge clk) begin
     if (rst_n && collecting && m_valid && m_ready) begin
       int lat;
@@ -238,7 +240,9 @@ module tb_policy_configs;
       end else begin
         if (second_pass) hist_b[lat]++; else hist_a[lat]++;
       end
-      if (second_pass) begin
+      if (third_pass) begin
+        dec_c[recvd] <= m_dec.decision;
+      end else if (second_pass) begin
         dec_b[recvd] <= m_dec.decision;
         rsn_b[recvd] <= m_dec.reason;
       end else begin
@@ -249,12 +253,67 @@ module tb_policy_configs;
     end
   end
 
+  // ------------------------------------------------------------------
+  // Pass C: commit a second configuration WHILE events are in flight.
+  //
+  // Spec 5.5 claims a commit landing mid-flight cannot produce a decision
+  // assembled from two configurations. Passes A and B both load into a drained
+  // pipeline, so neither exercises that claim at all -- it was asserted in
+  // three comment blocks and tested nowhere.
+  //
+  // Here the driver never stops, and the config is committed partway through.
+  // Every decision must then match what pass A or pass B produced for that
+  // event: A before the switch, B after, and nothing in between. A decision
+  // matching NEITHER is a split configuration.
+  // ------------------------------------------------------------------
+  task automatic run_mixed_pass();
+    @(negedge clk);
+    rst_n = 1'b0; s_valid = 1'b0; cfg_we = 1'b0;
+    sent = 0; recvd = 0; cycle = 0; collecting = 1'b0;
+    repeat (4) @(posedge clk);
+    @(negedge clk);
+    rst_n = 1'b1;
+    repeat (2) @(posedge clk);
+    load_config("tb/configs/baseline.cfg");
+    collecting = 1'b1;
+
+    fork
+      begin : mixed_driver
+        for (int unsigned i = 0; i < N_EVENTS; i++) begin
+          @(negedge clk);
+          while (!s_ready) @(negedge clk);
+          s_data  = word[i];
+          s_valid = 1'b1;
+          ing_time[i] = cycle;
+          @(posedge clk);
+          sent++;
+          // Deliberately hold valid high: the pipeline stays full across the
+          // commit, which is the whole point of this pass.
+        end
+        @(negedge clk);
+        s_valid = 1'b0;
+      end
+      begin : committer
+        // Wait until the pipe is genuinely full, then swap without pausing.
+        wait (sent > switch_at);
+        load_config("tb/configs/tuned.cfg");
+      end
+      begin : mixed_collector
+        while (recvd < N_EVENTS) @(posedge clk);
+      end
+    join
+    repeat (LATENCY_CYCLES + 8) @(posedge clk);
+    collecting = 1'b0;
+  endtask
+
   initial begin
     int differing, a_trades, b_trades, hist_mismatch;
+    int split, matched_a, matched_b, differing_rsn;
     m_ready = 1'b1;
     s_valid = 1'b0; s_data = '0;
     cfg_addr = '0; cfg_wdata = '0; cfg_we = 1'b0;
-    errors = 0; cycle = 0; second_pass = 1'b0;
+    errors = 0; cycle = 0; second_pass = 1'b0; third_pass = 1'b0;
+    switch_at = N_EVENTS / 2;
 
     build_stimulus(32'd1);
 
@@ -278,8 +337,11 @@ module tb_policy_configs;
       if (dec_b[i] != DEC_HOLD) b_trades++;
     end
 
-    $display("INFO: baseline trades=%0d  tuned trades=%0d  differing decisions=%0d of %0d",
-             a_trades, b_trades, differing, N_EVENTS);
+    differing_rsn = 0;
+    for (int i = 0; i < N_EVENTS; i++)
+      if (rsn_a[i] !== rsn_b[i]) differing_rsn++;
+    $display("INFO: baseline trades=%0d  tuned trades=%0d  differing decisions=%0d reasons=%0d of %0d",
+             a_trades, b_trades, differing, differing_rsn, N_EVENTS);
     $display("INFO: latency histogram (cycles: baseline / tuned)");
     hist_mismatch = 0;
     for (int i = 0; i < MAX_HIST; i++) begin
@@ -328,8 +390,40 @@ module tb_policy_configs;
              LATENCY_CYCLES, N_EVENTS, hist_b[LATENCY_CYCLES]);
     end
 
+    // ---- pass C: commit mid-stream, pipeline never drained ----------
+    third_pass = 1'b1;
+    run_mixed_pass();
+    if (recvd != N_EVENTS)
+      $fatal(1, "FAIL: pass C produced %0d of %0d events", recvd, N_EVENTS);
+
+    split = 0; matched_a = 0; matched_b = 0;
+    for (int i = 0; i < N_EVENTS; i++) begin
+      if      (dec_c[i] === dec_a[i] && dec_c[i] === dec_b[i]) begin
+        matched_a++; matched_b++;      // the configs agree on this event
+      end else if (dec_c[i] === dec_a[i]) matched_a++;
+      else if (dec_c[i] === dec_b[i]) matched_b++;
+      else begin
+        split++;
+        if (split <= 5)
+          $error("FAIL: event %0d decided %0d, which is neither config A (%0d) nor B (%0d)",
+                 i, dec_c[i], dec_a[i], dec_b[i]);
+      end
+    end
+    $display("INFO: mid-stream commit -- %0d events match A, %0d match B, %0d match neither",
+             matched_a, matched_b, split);
+    if (split != 0) begin
+      errors++;
+      $error("FAIL: %0d decisions matched neither configuration -- a commit split an event",
+             split);
+    end
+    // The commit must actually have taken effect, or this pass proves nothing.
+    if (matched_b == 0) begin
+      errors++;
+      $error("FAIL: no event was decided under config B -- the mid-stream commit never landed");
+    end
+
     if (errors != 0) $fatal(1, "FAIL: %0d checks failed", errors);
-    $display("PASS: tb_policy_configs -- %0d decisions differ, latency identical at %0d cycles",
+    $display("PASS: tb_policy_configs -- %0d decisions differ, latency identical at %0d cycles, mid-stream commit clean",
              differing, LATENCY_CYCLES);
     $finish;
   end

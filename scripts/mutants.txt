@@ -47,7 +47,7 @@ pol: empty book still decides @@ rtl/policy_engine.sv @@ tb_policy_engine @@ if 
 # depth against someone reordering that chain, and tb_risk_gate asserts the
 # observable property -- an empty book yields RSN_BOOK_EMPTY, never RSN_SPREAD.
 risk: empty book not rejected @@ rtl/risk_gate.sv @@ tb_risk_gate @@ else if (s_feat.book_empty)  reason_c = RSN_BOOK_EMPTY; @@ else if (1'b0)              reason_c = RSN_BOOK_EMPTY;
-risk: kill switch ignored @@ rtl/risk_gate.sv @@ tb_risk_gate @@ if      (cfg.kill)           reason_c = RSN_KILL; @@ if      (1'b0)               reason_c = RSN_KILL;
+risk: kill switch ignored @@ rtl/risk_gate.sv @@ tb_risk_gate @@ else if (cfg.kill)           reason_c = RSN_KILL; @@ else if (1'b0)               reason_c = RSN_KILL;
 risk: max long not enforced @@ rtl/risk_gate.sv @@ tb_risk_gate @@ assign over_long  = (s_decision == DEC_BUY)  && (next_pos > lim_long); @@ assign over_long  = 1'b0;
 risk: max short not enforced @@ rtl/risk_gate.sv @@ tb_risk_gate @@ assign over_short = (s_decision == DEC_SELL) && (next_pos < lim_short); @@ assign over_short = 1'b0;
 # The mutant has to put the unsigned expression INLINE in the comparison. A
@@ -71,4 +71,15 @@ cfg: reset does not arm the kill switch @@ rtl/config_regs.sv @@ tb_config_regs 
 lat: package claims one cycle too many @@ rtl/market_pkg.sv @@ tb_fixed_latency @@ localparam int LAT_TOB        = 1; @@ localparam int LAT_TOB        = 2;
 lat: policy claims one cycle too many @@ rtl/market_pkg.sv @@ tb_policy_configs @@ localparam int LAT_POLICY     = 2; @@ localparam int LAT_POLICY     = 3;
 lat: feature_engine collapsed to one cycle @@ rtl/feature_engine.sv @@ tb_fixed_latency @@       m_valid <= v1; @@       m_valid <= s_valid;
+# NOT LISTED: "cfg-safe: commit boundary always open".
+# Forcing cfg_boundary to 1 changes nothing observable, and the reason is worth
+# knowing: atomicity comes from the per-event SNAPSHOT, not from the boundary.
+# policy_engine captures the weights, thresholds, order size and the risk
+# limits into stage 1 on the accept edge, all from one clock edge, so an event
+# is scored by one configuration generation no matter when the shadow swaps.
+# The boundary is defence in depth for a future where that snapshot changes.
+# What IS load-bearing is shadow-plus-commit, which makes a BATCH of writes
+# atomic -- "cfg: writes go live without a commit" is listed and is killed.
+risk: position check wraps at POS_W @@ rtl/risk_gate.sv @@ tb_risk_gate @@ localparam int CHK_W = POS_W + 1; @@ localparam int CHK_W = POS_W;
+risk: policy HOLD still gets a reason @@ rtl/risk_gate.sv @@ tb_risk_gate @@ if      (s_decision == DEC_HOLD) reason_c = RSN_NONE; @@ if      (1'b0)                  reason_c = RSN_NONE;
 cfg-indep: a config bit reaches the stall path @@ rtl/policy_engine.sv @@ tb_policy_configs @@ assign advance = m_ready || !v2; @@ assign advance = (m_ready || !v2) && !(cfg.w_spread[10] && v2);

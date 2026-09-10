@@ -34,9 +34,10 @@ module tb_fixed_latency;
   logic [EVENT_W-1:0] s_data;
   logic               s_valid, s_ready;
 
-  // The full pipeline as built today: decode -> sequence -> book -> features.
-  // Latency is measured across all four, so LATENCY_CYCLES is proven end to
-  // end rather than inferred by adding up the per-stage binds.
+  // The full pipeline as built today: decode -> sequence -> book -> features
+  // -> policy -> risk. Latency is measured across all six, so LATENCY_CYCLES
+  // is proven end to end rather than inferred by adding up the per-stage
+  // binds.
   market_event_t      d_event, q_event, b_event, m_event;
   event_err_t         d_err, q_err, b_err, m_err;
   logic               d_valid, d_ready, q_valid, q_ready;
@@ -52,6 +53,7 @@ module tb_fixed_latency;
   logic [QTY_W-1:0]          p_order_qty;
   decision_t          m_dec;
   logic               cfg_boundary;
+  risk_cfg_t          p_risk_cfg;
   logic [CFG_ADDR_W-1:0] cfg_addr;
   logic [CFG_DATA_W-1:0] cfg_wdata;
   logic                  cfg_we;
@@ -93,16 +95,17 @@ module tb_fixed_latency;
   );
 
   policy_engine u_pol (
-    .clk(clk), .rst_n(rst_n), .cfg(policy_cfg),
+    .clk(clk), .rst_n(rst_n), .cfg(policy_cfg), .risk_cfg_in(risk_cfg),
     .s_event(f_event), .s_err(f_err), .s_feat(f_feat),
     .s_valid(f_valid), .s_ready(f_ready),
     .m_event(p_event), .m_err(p_err), .m_feat(p_feat),
     .m_decision(p_decision), .m_score(p_score), .m_order_qty(p_order_qty),
-    .m_valid(p_valid), .m_ready(p_ready), .cfg_boundary(cfg_boundary)
+    .m_valid(p_valid), .m_ready(p_ready), .cfg_boundary(cfg_boundary),
+    .m_risk_cfg(p_risk_cfg)
   );
 
   risk_gate u_risk (
-    .clk(clk), .rst_n(rst_n), .cfg(risk_cfg),
+    .clk(clk), .rst_n(rst_n), .cfg(p_risk_cfg),
     .s_event(p_event), .s_err(p_err), .s_feat(p_feat),
     .s_decision(p_decision), .s_score(p_score), .s_order_qty(p_order_qty),
     .s_valid(p_valid), .s_ready(p_ready),
@@ -270,8 +273,9 @@ module tb_fixed_latency;
     measured = 0;
     errors   = 0;
     foreach (hist[i]) hist[i] = 0;
-    $display("INFO: seed=%0d LATENCY_CYCLES=%0d (LAT_DECODE=%0d + LAT_SEQCHK=%0d + LAT_TOB=%0d + LAT_FEATURE=%0d)",
-             seed, LATENCY_CYCLES, LAT_DECODE, LAT_SEQCHK, LAT_TOB, LAT_FEATURE);
+    $display("INFO: seed=%0d LATENCY_CYCLES=%0d (decode %0d + seq %0d + book %0d + feat %0d + policy %0d + risk %0d)",
+             seed, LATENCY_CYCLES, LAT_DECODE, LAT_SEQCHK, LAT_TOB,
+             LAT_FEATURE, LAT_POLICY, LAT_RISK);
 
     m_ready = 1'b1;      // held high for the whole run: the stated condition
     s_valid = 1'b0;
@@ -316,8 +320,11 @@ module tb_fixed_latency;
     $display("INFO: latency min=%0d mean=%0d max=%0d over %0d events",
              lat_min, (measured == 0) ? 64'd0 : lat_sum / longint'(measured), lat_max,
              measured);
-    $display("INFO: at the Basys 3's fixed 100 MHz that is %0d ns",
-             lat_max * 10);
+    $display("INFO: %0d cycles x 10.0 ns = %0d ns core pipeline latency, on the",
+             lat_max, lat_max * 10);
+    $display("INFO: Basys 3's fixed 100 MHz oscillator. This is ARITHMETIC, NOT a");
+    $display("INFO: synthesis result -- there is no market_pipeline_top and no");
+    $display("INFO: measured WNS anywhere in this repo. Do not quote it as timing.");
     $display("INFO: classification mix gap=%0d stale=%0d bad=%0d (latency must be independent of these)",
              gap_count, stale_count, bad_event_count);
 
