@@ -12,7 +12,7 @@ TB      := $(wildcard tb/*.sv)
 TOP       ?= tb_market_pipeline_top
 SYNTH_TOP ?= market_pipeline_top
 
-.PHONY: all lint sim build pytest clean
+.PHONY: all lint sim build pytest trace clean
 all: lint pytest
 
 # Package must lead the file list: market_pkg.sv defines every width/enum/struct.
@@ -42,6 +42,14 @@ build:
 
 pytest:
 	$(PYTHON) -m pytest -q
+
+# Regenerate the randomized replay trace. SEED is explicit on purpose: a
+# failing run prints its seed and is reproduced by rerunning with the same one.
+SEED    ?= 1
+NEVENTS ?= 2000
+trace:
+	$(PYTHON) scripts/generate_events.py --n $(NEVENTS) --seed $(SEED) \
+	    --out tb/traces/random
 
 clean:
 	rm -rf build/ xsim.dir/ .Xil/ *.jou *.log *.pb *.wdb obj_dir/

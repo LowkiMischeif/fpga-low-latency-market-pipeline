@@ -44,13 +44,41 @@ module handshake_checker #(
   a_fixed_latency: assert property (p_fixed_latency)
     else $error("output did not appear exactly %0d cycles after accept", LATENCY);
 
-  // No output may appear without an input having been accepted LATENCY cycles
-  // earlier. Catches a stage inventing events out of nothing.
+  // Conservation: a stage may never emit more events than it accepted, and may
+  // never hold more than LATENCY of them in flight.
+  //
+  // The obvious formulation -- "every handoff had an accept exactly LATENCY
+  // cycles ago" -- is wrong under backpressure, and the randomized replay
+  // caught it: when m_ready is low the output waits, so by the time it is
+  // handed off the accept is further back than LATENCY. Counting is the
+  // formulation that holds with or without stalls.
+  int unsigned in_count, out_count;
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      in_count  <= '0;
+      out_count <= '0;
+    end else begin
+      if (s_valid && s_ready) in_count  <= in_count  + 1;
+      if (m_valid && m_ready) out_count <= out_count + 1;
+    end
+  end
+
   property p_no_spontaneous_output;
     @(posedge clk) disable iff (!rst_n)
-      (m_valid && m_ready) |-> $past(s_valid && s_ready, LATENCY);
+      (m_valid && m_ready) |-> (out_count < in_count);
   endproperty
   a_no_spontaneous_output: assert property (p_no_spontaneous_output)
-    else $error("output with no corresponding accepted input");
+    else $error("output handed off with no unconsumed input (in=%0d out=%0d)",
+                in_count, out_count);
+
+  // Structural depth: a pipeline with LATENCY registers cannot be holding more
+  // than LATENCY events. Catches a stage that silently buffers.
+  property p_bounded_in_flight;
+    @(posedge clk) disable iff (!rst_n)
+      (in_count - out_count) <= LATENCY;
+  endproperty
+  a_bounded_in_flight: assert property (p_bounded_in_flight)
+    else $error("%0d events in flight, exceeds LATENCY=%0d",
+                in_count - out_count, LATENCY);
 
 endmodule
