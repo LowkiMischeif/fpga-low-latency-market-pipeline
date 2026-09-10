@@ -67,3 +67,32 @@ bind feature_engine handshake_checker #(
   .m_tag(m_event.seq),
   .m_payload({m_event, m_err, m_feat})
 );
+
+bind policy_engine handshake_checker #(
+  .LATENCY(market_pkg::LAT_POLICY),
+  .TAG_W  (market_pkg::SEQ_W),
+  .PAY_W  ($bits(market_pkg::market_event_t) + $bits(market_pkg::event_err_t)
+           + $bits(market_pkg::feature_t) + 2 + market_pkg::SCORE_W
+           + market_pkg::QTY_W)
+) u_chk (
+  .clk(clk), .rst_n(rst_n),
+  .s_valid(s_valid), .s_ready(s_ready),
+  .m_valid(m_valid), .m_ready(m_ready),
+  .s_tag(s_event.seq),
+  .m_tag(m_event.seq),
+  .m_payload({m_event, m_err, m_feat, m_decision, m_score, m_order_qty})
+);
+
+bind risk_gate handshake_checker #(
+  .LATENCY(market_pkg::LAT_RISK),
+  .TAG_W  (market_pkg::SEQ_W),
+  .PAY_W  ($bits(market_pkg::market_event_t) + $bits(market_pkg::event_err_t)
+           + $bits(market_pkg::feature_t) + $bits(market_pkg::decision_t))
+) u_chk (
+  .clk(clk), .rst_n(rst_n),
+  .s_valid(s_valid), .s_ready(s_ready),
+  .m_valid(m_valid), .m_ready(m_ready),
+  .s_tag(s_event.seq),
+  .m_tag(m_event.seq),
+  .m_payload({m_event, m_err, m_feat, m_decision})
+);
