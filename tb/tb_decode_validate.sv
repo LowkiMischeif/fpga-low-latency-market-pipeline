@@ -6,7 +6,20 @@
 // The golden CSV and the RTL could in principle be wrong in the same way,
 // which is why tb_event_decoder.sv and tb_sequence_checker.sv carry
 // hand-written vectors and tb/assertions.sv carries trace-independent
-// properties. This testbench adds volume and backpressure, not ground truth.
+// properties.
+//
+// This file adds a third guard against that failure mode: before a single
+// event is driven, every row of the golden CSV is re-derived HERE from the raw
+// hex word -- field slices taken from the spec's bit table, and a sequence
+// model written from the spec's condition/action table -- and any disagreement
+// is fatal. So the run compares three independent things:
+//
+//     hex word --(this file's reference)--> flags
+//              --(generate_events.py)-----> flags      (must agree, checked at load)
+//              --(the RTL)----------------> flags      (must agree, checked per event)
+//
+// A generator bug now has to be reproduced identically in Python, in this
+// testbench and in the RTL to go unnoticed.
 module tb_decode_validate;
   import market_pkg::*;
 
@@ -53,10 +66,44 @@ module tb_decode_validate;
   int exp_gap    [0:MAX_EVENTS-1];
   int exp_stale  [0:MAX_EVENTS-1];
 
+  // Reference model results, derived here from trace_words alone.
+  bit ref_gap   [0:MAX_EVENTS-1];
+  bit ref_stale [0:MAX_EVENTS-1];
+  longint unsigned ref_gap_count, ref_stale_count, ref_missed_total,
+                   ref_bad_count;
+
+  // ------------------------------------------------------------------
+  // Deterministic stimulus randomization.
+  //
+  // The simulator's own RNG is not used. xsim rejects the seeding form
+  // $urandom(seed) outright, and even where it is accepted the $urandom
+  // stream depends on process creation order, so "seed=N" printed in the log
+  // would not reliably reproduce a failure -- which is the entire reason the
+  // seed is printed. A 32-bit xorshift written here does reproduce, in any
+  // simulator, from the seed alone.
+  // ------------------------------------------------------------------
+  function automatic int unsigned xorshift32(ref int unsigned state);
+    state = state ^ (state << 13);
+    state = state ^ (state >> 17);
+    state = state ^ (state << 5);
+    return state;
+  endfunction
+
+  // `input` is explicit on lo/hi: without it they inherit the preceding
+  // argument's `ref` direction and the call sites become illegal.
+  function automatic int unsigned rand_range(ref int unsigned state,
+                                             input int unsigned lo,
+                                             input int unsigned hi);
+    return lo + (xorshift32(state) % (hi - lo + 1));
+  endfunction
+
+  int unsigned drv_rng, bp_rng;
+
   int n_events = 0;
   int seed = 1;
   int errors = 0;
   int sent = 0, recvd = 0;
+  int stall_cycles = 0, idle_cycles = 0, held_valid_cycles = 0;
   bit loaded = 1'b0;
 
   // Read the golden CSV. Column order must match CSV_COLUMNS in
@@ -84,20 +131,129 @@ module tb_decode_validate;
     $fclose(fd);
   endtask
 
+  // ------------------------------------------------------------------
+  // Independent reference model.
+  //
+  // Field slices come from the design spec's bit table, not from
+  // market_pkg's *_LSB constants. The sequence rules come from the spec's
+  // condition/action table:
+  //
+  //     rx == expect : in order, expect := rx + 1
+  //     rx >  expect : gap,      missed += rx - expect, expect := rx + 1
+  //     rx <  expect : stale,    expect unchanged
+  //
+  // with ">" and "<" evaluated on the 16-bit modular difference read as
+  // signed, and with the first event after reset adopted as the baseline.
+  // ------------------------------------------------------------------
+  // One disagreement between the golden CSV and the reference model, reported
+  // with enough context to find the row in the CSV by eye.
+  task automatic audit(int idx, string field, logic [15:0] golden,
+                       logic [15:0] reference, ref int nerr);
+    if (golden !== reference) begin
+      nerr++;
+      $error("GOLDEN[%0d]: %s = %0h, testbench reference says %0h",
+             idx, field, golden, reference);
+    end
+  endtask
+
+  task automatic build_reference_and_audit_golden();
+    logic [EVENT_W-1:0]      w;
+    logic [SEQ_W-1:0]        rx, expect_ref;
+    logic signed [SEQ_W-1:0] diff;
+    bit                      primed_ref;
+    bit                      r_btype, r_bside, r_brsv;
+    int                      audit_errs;
+
+    expect_ref       = '0;
+    primed_ref       = 1'b0;
+    ref_gap_count    = 0;
+    ref_stale_count  = 0;
+    ref_missed_total = 0;
+    ref_bad_count    = 0;
+    audit_errs       = 0;
+
+    for (int i = 0; i < n_events; i++) begin
+      w  = trace_words[i];
+      rx = w[17:2];
+
+      r_btype = !(w[63:56] inside {8'h01, 8'h02, 8'h03});
+      r_bside = !(w[51:50] inside {2'b01, 2'b10});
+      r_brsv  = (w[1:0] != 2'b00);
+
+      diff = $signed(rx - expect_ref);
+      ref_gap[i]   = primed_ref && (diff > 0);
+      ref_stale[i] = primed_ref && (diff < 0);
+      if (!primed_ref || (diff >= 0)) expect_ref = rx + 1'b1;
+      primed_ref = 1'b1;
+
+      if (ref_gap[i]) begin
+        ref_gap_count++;
+        ref_missed_total += longint'(diff);
+      end
+      if (ref_stale[i]) ref_stale_count++;
+      if (r_btype || r_bside || r_brsv) ref_bad_count++;
+
+      // --- audit the golden CSV against the reference ---------------
+      audit(i, "etype",    exp_etype[i][TYPE_W-1:0],   w[63:56], audit_errs);
+      audit(i, "symbol",   exp_symbol[i][SYMBOL_W-1:0],w[55:52], audit_errs);
+      audit(i, "side",     exp_side[i][SIDE_W-1:0],    w[51:50], audit_errs);
+      audit(i, "price",    exp_price[i][PRICE_W-1:0],  w[49:34], audit_errs);
+      audit(i, "qty",      exp_qty[i][QTY_W-1:0],      w[33:18], audit_errs);
+      audit(i, "seq",      exp_seq[i][SEQ_W-1:0],      rx,       audit_errs);
+      audit(i, "bad_type", {15'd0, exp_btype[i][0]},   {15'd0, r_btype},     audit_errs);
+      audit(i, "bad_side", {15'd0, exp_bside[i][0]},   {15'd0, r_bside},     audit_errs);
+      audit(i, "bad_rsv",  {15'd0, exp_brsv[i][0]},    {15'd0, r_brsv},      audit_errs);
+      audit(i, "gap",      {15'd0, exp_gap[i][0]},     {15'd0, ref_gap[i]},  audit_errs);
+      audit(i, "stale",    {15'd0, exp_stale[i][0]},   {15'd0, ref_stale[i]},audit_errs);
+    end
+
+    if (audit_errs != 0)
+      $fatal(1, "FAIL: %0d disagreements between the golden CSV and the testbench reference model -- the generator and the RTL are no longer describing the same protocol", audit_errs);
+
+    $display("INFO: golden CSV audited against the testbench reference model: %0d events agree",
+             n_events);
+    $display("INFO: reference totals gap=%0d stale=%0d missed=%0d bad=%0d",
+             ref_gap_count, ref_stale_count, ref_missed_total, ref_bad_count);
+  endtask
+
   initial begin
     string hex_path, csv_path;
     if (!$value$plusargs("SEED=%d", seed)) seed = 1;
     if (!$value$plusargs("HEX=%s", hex_path)) hex_path = "tb/traces/random.hex";
     if (!$value$plusargs("CSV=%s", csv_path))
       csv_path = "tb/traces/random_expected.csv";
+    // xorshift32 degenerates from a zero state, so fold in a nonzero constant.
+    drv_rng = seed ^ 32'h9E37_79B9;
+    bp_rng  = seed ^ 32'h5EED_BEEF;
     $display("INFO: seed=%0d hex=%s csv=%s", seed, hex_path, csv_path);
+    $display("INFO: reproduce with: make trace SEED=<trace seed> && make sim TOP=tb_decode_validate PLUSARGS=\"SEED=%0d\"",
+             seed);
+    for (int i = 0; i < MAX_EVENTS; i++) trace_words[i] = 'x;
     $readmemh(hex_path, trace_words);
     load_expected(csv_path);
+    // A hex file longer than the CSV would silently drop events off the end of
+    // the scoreboard, and the run would still be green.
+    if (n_events < MAX_EVENTS && !$isunknown(trace_words[n_events]))
+      $fatal(1, "FAIL: %s has more events than %s has rows (%0d)",
+             hex_path, csv_path, n_events);
+    if ($isunknown(trace_words[n_events - 1]))
+      $fatal(1, "FAIL: %s has fewer events than %s has rows (%0d)",
+             hex_path, csv_path, n_events);
     $display("INFO: loaded %0d events", n_events);
+    build_reference_and_audit_golden();
     loaded = 1'b1;
   end
 
-  // Driver: randomized valid gaps.
+  // ------------------------------------------------------------------
+  // Driver: randomized valid gaps, valid HELD across stalls.
+  //
+  // The previous version asserted s_valid for exactly one cycle after seeing
+  // s_ready high, so s_valid was never high while s_ready was low. That made
+  // a_no_valid_retraction_in and a_in_payload_stable vacuous at the decoder
+  // input and meant no event ever had to survive a stall at the top of the
+  // pipe. Holding valid until accepted is both the legal handshake and the
+  // stimulus those properties need.
+  // ------------------------------------------------------------------
   initial begin
     s_valid = 1'b0;
     s_data  = '0;
@@ -107,20 +263,29 @@ module tb_decode_validate;
     @(posedge clk);
 
     while (sent < n_events) begin
-      if ($urandom_range(0, 3) == 0) begin
+      if (rand_range(drv_rng, 0, 3) == 0) begin
         @(negedge clk);
         s_valid = 1'b0;
-        repeat ($urandom_range(1, 3)) @(posedge clk);
+        repeat (rand_range(drv_rng, 1, 3)) begin
+          @(posedge clk);
+          idle_cycles++;
+        end
       end
       @(negedge clk);
-      while (!s_ready) @(negedge clk);
       s_data  = trace_words[sent];
       s_valid = 1'b1;
-      @(posedge clk);
+      #1;                             // let the negedge-driven m_ready settle
+      while (!s_ready) begin
+        @(posedge clk);               // stalled: valid and payload held
+        held_valid_cycles++;
+        @(negedge clk);
+        #1;
+      end
+      @(posedge clk);                 // accepted on this edge
       sent++;
-      @(negedge clk);
-      s_valid = 1'b0;
     end
+    @(negedge clk);
+    s_valid = 1'b0;
   end
 
   // Backpressure: randomly deassert m_ready to prove the pipe stalls as a
@@ -134,9 +299,12 @@ module tb_decode_validate;
     m_ready = 1'b1;
     forever begin
       @(negedge clk);
-      if ($urandom_range(0, 4) == 0) begin
+      if (rand_range(bp_rng, 0, 4) == 0) begin
         m_ready = 1'b0;
-        repeat ($urandom_range(1, 4)) @(negedge clk);
+        repeat (rand_range(bp_rng, 1, 6)) begin
+          @(negedge clk);
+          stall_cycles++;
+        end
         m_ready = 1'b1;
       end
     end
@@ -169,12 +337,52 @@ module tb_decode_validate;
     wait (loaded);
     wait (recvd == n_events);
     repeat (5) @(posedge clk);
+
+    // Telemetry: the counters are output ports that nothing else in this
+    // testbench checks, and the directed testbench only ever drives them to
+    // single digits. Compare them against the reference totals.
+    if (gap_count !== ref_gap_count[CNT_W-1:0]) begin
+      errors++;
+      $error("FAIL: gap_count %0d, reference %0d", gap_count, ref_gap_count);
+    end
+    if (stale_count !== ref_stale_count[CNT_W-1:0]) begin
+      errors++;
+      $error("FAIL: stale_count %0d, reference %0d", stale_count, ref_stale_count);
+    end
+    if (missed_total !== ref_missed_total[CNT_W-1:0]) begin
+      errors++;
+      $error("FAIL: missed_total %0d, reference %0d", missed_total, ref_missed_total);
+    end
+    if (bad_event_count !== ref_bad_count[CNT_W-1:0]) begin
+      errors++;
+      $error("FAIL: bad_event_count %0d, reference %0d", bad_event_count, ref_bad_count);
+    end
+
+    // Coverage floor. A "randomized" run that happened to stall zero times,
+    // or that saw no gap and no stale event, is not the test this file claims
+    // to be, and it must not be reported as one.
+    if (stall_cycles == 0) begin
+      errors++;
+      $error("FAIL: backpressure never asserted -- the stall properties were vacuous this run");
+    end
+    if (held_valid_cycles == 0) begin
+      errors++;
+      $error("FAIL: s_valid was never held across a stall -- the input-side handshake properties were vacuous this run");
+    end
+    if (ref_gap_count == 0 || ref_stale_count == 0 || ref_bad_count == 0) begin
+      errors++;
+      $error("FAIL: trace lacks gap/stale/malformed events (gap=%0d stale=%0d bad=%0d)",
+             ref_gap_count, ref_stale_count, ref_bad_count);
+    end
+
     if (errors != 0)
       $fatal(1, "FAIL: %0d mismatches over %0d events (seed=%0d)",
              errors, n_events, seed);
-    $display("PASS: tb_decode_validate -- %0d events, seed=%0d", n_events, seed);
     $display("INFO: gap_count=%0d stale_count=%0d missed_total=%0d bad_event_count=%0d",
              gap_count, stale_count, missed_total, bad_event_count);
+    $display("INFO: coverage stall_cycles=%0d idle_cycles=%0d held_valid_cycles=%0d",
+             stall_cycles, idle_cycles, held_valid_cycles);
+    $display("PASS: tb_decode_validate -- %0d events, seed=%0d", n_events, seed);
     $finish;
   end
 

@@ -22,15 +22,29 @@ module tb_market_pkg;
     if (LATENCY_CYCLES != 2)
       $fatal(1, "FAIL: expected 2 cycles on this branch, got %0d", LATENCY_CYCLES);
 
-    // Encoding validators must accept exactly the defined encodings.
-    if (!is_valid_type(EVT_ADD) || !is_valid_type(EVT_CANCEL) || !is_valid_type(EVT_TRADE))
-      $fatal(1, "FAIL: is_valid_type rejects a defined encoding");
-    if (is_valid_type(8'hFF)) $fatal(1, "FAIL: is_valid_type accepts 0xFF");
-    if (is_valid_type(8'h00)) $fatal(1, "FAIL: is_valid_type accepts 0x00");
-    if (!is_valid_side(SIDE_BID) || !is_valid_side(SIDE_ASK))
-      $fatal(1, "FAIL: is_valid_side rejects a defined encoding");
-    if (is_valid_side(2'b00) || is_valid_side(2'b11))
-      $fatal(1, "FAIL: is_valid_side accepts an undefined encoding");
+    // The enum encodings themselves, against the literals in the design spec.
+    // Comparing EVT_ADD to EVT_ADD would prove nothing; these are the numbers
+    // the wire format is defined in terms of and the numbers
+    // generate_events.py hardcodes.
+    if (EVT_ADD    !== 8'h01) $fatal(1, "FAIL: EVT_ADD is %0h, spec says 01", EVT_ADD);
+    if (EVT_CANCEL !== 8'h02) $fatal(1, "FAIL: EVT_CANCEL is %0h, spec says 02", EVT_CANCEL);
+    if (EVT_TRADE  !== 8'h03) $fatal(1, "FAIL: EVT_TRADE is %0h, spec says 03", EVT_TRADE);
+    if (SIDE_BID   !== 2'b01) $fatal(1, "FAIL: SIDE_BID is %0b, spec says 01", SIDE_BID);
+    if (SIDE_ASK   !== 2'b10) $fatal(1, "FAIL: SIDE_ASK is %0b, spec says 10", SIDE_ASK);
+
+    // Encoding validators must accept EXACTLY the defined encodings. Spot
+    // checks at 0x00 and 0xFF miss the encoding that actually matters -- 0x04,
+    // one past EVT_TRADE -- so sweep the whole field. 256 iterations at
+    // elaboration time costs nothing and this is the file that is supposed to
+    // pin the single source of truth down.
+    for (int t = 0; t < 256; t++)
+      if (is_valid_type(t[TYPE_W-1:0]) !== (t inside {1, 2, 3}))
+        $fatal(1, "FAIL: is_valid_type(%0h) = %0b, spec says %0b",
+               t, is_valid_type(t[TYPE_W-1:0]), t inside {1, 2, 3});
+    for (int sd = 0; sd < 4; sd++)
+      if (is_valid_side(sd[SIDE_W-1:0]) !== (sd inside {1, 2}))
+        $fatal(1, "FAIL: is_valid_side(%0b) = %0b, spec says %0b",
+               sd, is_valid_side(sd[SIDE_W-1:0]), sd inside {1, 2});
 
     // Structs must be packed and sized as expected.
     if ($bits(market_event_t) != TYPE_W + SYMBOL_W + SIDE_W + PRICE_W + QTY_W + SEQ_W)

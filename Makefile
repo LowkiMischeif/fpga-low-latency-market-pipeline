@@ -34,8 +34,11 @@ lint:
 	done
 	@echo "== lint clean: $(MODULES)"
 
+# PLUSARGS is a space-separated list of NAME=VALUE forwarded to the sim as
+# +NAME=VALUE, e.g.  make sim TOP=tb_decode_validate PLUSARGS="SEED=7"
+PLUSARGS ?=
 sim:
-	$(VIVADO) -mode batch -notrace -source scripts/run_sim.tcl -tclargs $(TOP)
+	$(VIVADO) -mode batch -notrace -source scripts/run_sim.tcl -tclargs $(TOP) $(PLUSARGS)
 
 build:
 	$(VIVADO) -mode batch -notrace -source scripts/build.tcl -tclargs $(SYNTH_TOP)
@@ -45,11 +48,16 @@ pytest:
 
 # Regenerate the randomized replay trace. SEED is explicit on purpose: a
 # failing run prints its seed and is reproduced by rerunning with the same one.
-SEED    ?= 1
-NEVENTS ?= 2000
+# STARTSEQ exists so the randomized replay can be aimed at the 16-bit
+# wraparound: with the default 0 and 2000 events the trace never reaches
+# 0xFFFF, so the wrap path was only ever covered by the directed testbench.
+SEED     ?= 1
+NEVENTS  ?= 2000
+STARTSEQ ?= 0
+TRACEOUT ?= tb/traces/random
 trace:
 	$(PYTHON) scripts/generate_events.py --n $(NEVENTS) --seed $(SEED) \
-	    --out tb/traces/random
+	    --start-seq $(STARTSEQ) --out $(TRACEOUT)
 
 clean:
 	rm -rf build/ xsim.dir/ .Xil/ *.jou *.log *.pb *.wdb obj_dir/

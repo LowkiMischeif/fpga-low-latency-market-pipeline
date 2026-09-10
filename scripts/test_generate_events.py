@@ -131,3 +131,94 @@ def test_cli_writes_hex_and_expected_csv(tmp_path):
         rows = list(csv.DictReader(fh))
     assert len(rows) == 50
     assert int(rows[0]["word"], 16) == int(hex_lines[0], 16)
+
+
+# ---------------------------------------------------------------------------
+# Independent re-derivation of the flags.
+#
+# Everything above checks the generator against itself: it reads e["gap"] and
+# e["stale"], which generate() set from its own bookkeeping. These reconstruct
+# the flags from the sequence numbers alone, using the rule written out in the
+# design spec's condition/action table, and never look at the generator's
+# internal `expect`. If the generator's model of the feed drifts from the
+# spec, this is what notices.
+# ---------------------------------------------------------------------------
+SEQ_MOD_16 = 1 << 16
+
+
+def _signed16(x: int) -> int:
+    x &= SEQ_MOD_16 - 1
+    return x - SEQ_MOD_16 if x >= (SEQ_MOD_16 >> 1) else x
+
+
+def classify(seqs):
+    """Return (gap, stale, missed) per event using the spec's rule.
+
+    diff = rx - expect in 16-bit modular arithmetic, read as signed:
+    positive is a gap, negative is stale, zero is in order. The first event
+    after reset is adopted as the baseline.
+    """
+    out = []
+    expect = None
+    for rx in seqs:
+        if expect is None:
+            out.append((False, False, 0))
+            expect = (rx + 1) % SEQ_MOD_16
+            continue
+        diff = _signed16(rx - expect)
+        gap, stale = diff > 0, diff < 0
+        missed = diff if gap else 0
+        if diff >= 0:
+            expect = (rx + 1) % SEQ_MOD_16
+        out.append((gap, stale, missed))
+    return out
+
+
+def test_flags_match_independent_classifier():
+    evs = generate(n=1000, seed=17, gap_rate=0.08, stale_rate=0.06,
+                   bad_type_rate=0.02, bad_side_rate=0.02, bad_rsv_rate=0.01)
+    ref = classify([e["seq"] for e in evs])
+    for i, (e, (gap, stale, _missed)) in enumerate(zip(evs, ref)):
+        assert e["gap"] == gap, f"event {i}: generator gap={e['gap']}, spec rule says {gap}"
+        assert e["stale"] == stale, f"event {i}: generator stale={e['stale']}, spec rule says {stale}"
+
+
+def test_flags_match_independent_classifier_across_the_wrap():
+    """The default trace never reaches 0xFFFF, so aim one at the wrap."""
+    evs = generate(n=2000, seed=23, gap_rate=0.08, stale_rate=0.06,
+                   bad_type_rate=0.02, bad_side_rate=0.02, bad_rsv_rate=0.01,
+                   start_seq=SEQ_MOD_16 - 64)
+    seqs = [e["seq"] for e in evs]
+    assert max(seqs) > SEQ_MOD_16 - 32 and min(seqs) < 1000, "trace did not cross the wrap"
+    ref = classify(seqs)
+    for i, (e, (gap, stale, _missed)) in enumerate(zip(evs, ref)):
+        assert e["gap"] == gap, f"event {i} (seq {e['seq']}): gap disagrees across the wrap"
+        assert e["stale"] == stale, f"event {i} (seq {e['seq']}): stale disagrees across the wrap"
+
+
+def test_injected_defects_stay_inside_the_signed_comparison_window():
+    """The generator cannot reach the +/-32768 aliasing boundary.
+
+    sequence_checker reads a 16-bit modular difference as signed, so a forward
+    jump of 32768 or more is indistinguishable from a backward one. This test
+    records that the randomized replay never gets near that boundary -- gaps
+    and stale distances are 1..8 by construction -- which is precisely why the
+    boundary is covered by hand-written vectors in tb_sequence_checker.sv
+    instead. If someone widens the injection range, this fails and the split of
+    responsibility gets revisited on purpose rather than by accident.
+    """
+    evs = generate(n=3000, seed=29, gap_rate=0.15, stale_rate=0.15,
+                   bad_type_rate=0.0, bad_side_rate=0.0, bad_rsv_rate=0.0)
+    ref = classify([e["seq"] for e in evs])
+    gaps = [m for (g, _s, m) in ref if g]
+    assert gaps, "no gaps generated"
+    assert max(gaps) <= 8, f"gap of {max(gaps)} exceeds the documented 1..8 range"
+    assert max(gaps) < (SEQ_MOD_16 >> 1), "generator can reach the signed-comparison boundary"
+
+
+def test_start_seq_is_honoured():
+    """--start-seq is what aims a randomized trace at the wrap; it has to work."""
+    evs = generate(n=5, seed=31, start_seq=60000)
+    assert evs[0]["seq"] == 60000
+    evs = generate(n=5, seed=31, start_seq=SEQ_MOD_16 + 7)
+    assert evs[0]["seq"] == 7, "start_seq must be taken modulo 2**16"
