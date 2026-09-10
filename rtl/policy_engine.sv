@@ -27,6 +27,11 @@ module policy_engine
   input  logic          rst_n,
 
   input  policy_cfg_t   cfg,
+  // Carried, not used. risk_gate must see the SAME configuration generation
+  // that scored the event, or a commit landing while events are in flight
+  // applies the new limits to a score computed under the old weights. Routing
+  // it through here snapshots it at accept exactly as the weights are.
+  input  risk_cfg_t     risk_cfg_in,
 
   input  market_event_t s_event,
   input  event_err_t    s_err,
@@ -40,14 +45,19 @@ module policy_engine
   output decision_e     m_decision,
   output logic signed [SCORE_W-1:0] m_score,
   output logic [QTY_W-1:0]          m_order_qty,
+  output risk_cfg_t     m_risk_cfg,
   output logic          m_valid,
   input  logic          m_ready,
 
-  // Asserted when a configuration swap cannot split an event in half: either
-  // an event is being accepted right now (the swap lands after this event's
-  // weights are already captured, so it applies from the NEXT one), or the
-  // engine is idle and there is nothing to split. config_regs takes its
-  // commit here.
+  // Asserted when a configuration swap cannot split an event: either an event
+  // is being accepted right now, or the engine is idle.
+  //
+  // Defence in depth, not the mechanism. Atomicity actually comes from the
+  // per-event snapshot below -- weights, thresholds, order size and the risk
+  // limits are all captured into stage 1 on the accept edge, from one clock
+  // edge -- so an event is scored by one configuration generation whenever the
+  // shadow swaps. Forcing this signal high changes no output, which is why
+  // scripts/mutants.txt lists that mutation as deliberately absent.
   output logic          cfg_boundary
 );
 
@@ -85,6 +95,7 @@ module policy_engine
   logic signed [W_W-1:0]     w0_1;
   logic signed [SCORE_W-1:0] tbuy_1, tsell_1;
   logic [QTY_W-1:0]          oq_1;
+  risk_cfg_t                 rc_1;
 
   // ------------------------------------------------------------------
   // Stage 2: sum, scale, add the constant term, compare.
@@ -140,9 +151,10 @@ module policy_engine
       v1 <= 1'b0; v2 <= 1'b0;
       ev1 <= '0; er1 <= '0; ft1 <= '0;
       p_spread1 <= '0; p_imb1 <= '0; p_mom1 <= '0;
-      w0_1 <= '0; tbuy_1 <= '0; tsell_1 <= '0; oq_1 <= '0;
+      w0_1 <= '0; tbuy_1 <= '0; tsell_1 <= '0; oq_1 <= '0; rc_1 <= '0;
       m_valid <= 1'b0; m_event <= '0; m_err <= '0; m_feat <= '0;
       m_decision <= DEC_HOLD; m_score <= '0; m_order_qty <= '0;
+      m_risk_cfg <= '0;
     end else if (advance) begin
       // stage 1
       v1        <= s_valid;
@@ -156,6 +168,7 @@ module policy_engine
       tbuy_1    <= cfg.theta_buy;
       tsell_1   <= cfg.theta_sell;
       oq_1      <= cfg.order_qty;
+      rc_1      <= risk_cfg_in;
 
       // stage 2
       v2          <= v1;
@@ -166,6 +179,7 @@ module policy_engine
       m_decision  <= dec2;
       m_score     <= score2;
       m_order_qty <= oq_1;
+      m_risk_cfg  <= rc_1;
     end
   end
 

@@ -47,19 +47,29 @@ module risk_gate
   assign seq_bad   = s_err.gap || s_err.stale;
 
   // Prospective position if this decision were allowed through.
-  logic signed [POS_W-1:0] qty_ext, next_pos;
+  //
+  // Computed one bit WIDER than the position. POS_W holds the limit magnitude
+  // in POS_W-1 bits, but position + order can exceed that: at max_long =
+  // 2**23-1 with a 65535-lot order the sum wraps negative, `next_pos >
+  // lim_long` reads false, and the limit FAILS OPEN -- the one failure mode
+  // this module exists to prevent. Both the sum and the limits are compared at
+  // CHK_W so the comparison cannot wrap.
+  localparam int CHK_W = POS_W + 1;
+
+  logic signed [POS_W-1:0] qty_ext;
+  logic signed [CHK_W-1:0] next_pos;
   assign qty_ext  = POS_W'({1'b0, s_order_qty});
-  assign next_pos = (s_decision == DEC_BUY)  ? (position + qty_ext)
-                  : (s_decision == DEC_SELL) ? (position - qty_ext)
-                  :                             position;
+  assign next_pos = (s_decision == DEC_BUY)  ? (CHK_W'(position) + CHK_W'(qty_ext))
+                  : (s_decision == DEC_SELL) ? (CHK_W'(position) - CHK_W'(qty_ext))
+                  :                             CHK_W'(position);
 
   // The limits are held in SIGNED variables on purpose. Written inline as
   // POS_W'({1'b0, cfg.max_long}) the right-hand side is unsigned, and SV then
   // evaluates the whole comparison unsigned -- a negative next_pos reads as a
   // huge positive number and the long limit fires on a short position.
-  logic signed [POS_W-1:0] lim_long, lim_short;
-  assign lim_long  =  $signed({1'b0, cfg.max_long});
-  assign lim_short = -$signed({1'b0, cfg.max_short});
+  logic signed [CHK_W-1:0] lim_long, lim_short;
+  assign lim_long  =  CHK_W'($signed({1'b0, cfg.max_long}));
+  assign lim_short = -CHK_W'($signed({1'b0, cfg.max_short}));
 
   logic over_long, over_short;
   assign over_long  = (s_decision == DEC_BUY)  && (next_pos > lim_long);
@@ -75,7 +85,14 @@ module risk_gate
   reason_e   reason_c;
   decision_e decision_c;
   always_comb begin
-    if      (cfg.kill)           reason_c = RSN_KILL;
+    // A HOLD the policy chose itself suppresses nothing, so it carries no
+    // reason. Without this the reason chain stamps whatever the event happens
+    // to trigger onto every HOLD -- an empty book becomes RSN_BOOK_EMPTY, a
+    // raised kill switch becomes RSN_KILL -- and telemetry can no longer tell
+    // "the policy did not want to trade" from "the policy wanted to and was
+    // refused", which is the entire distinction these codes exist for.
+    if      (s_decision == DEC_HOLD) reason_c = RSN_NONE;
+    else if (cfg.kill)           reason_c = RSN_KILL;
     else if (malformed)          reason_c = RSN_MALFORMED;
     else if (seq_bad)            reason_c = RSN_SEQUENCE;
     else if (s_feat.book_empty)  reason_c = RSN_BOOK_EMPTY;

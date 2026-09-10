@@ -9,11 +9,16 @@
 //
 // So: writes land in a SHADOW copy and change nothing. Writing CFG_COMMIT arms
 // a pending swap. The swap happens on the next asserted `boundary` -- driven by
-// the point in the pipeline where no event is mid-flight through the policy
-// stages -- and applies every shadow field in one cycle. An event is therefore
-// always scored by exactly one configuration, and which one is a property of
-// where it sits in the stream rather than of when a Python script happened to
-// finish writing.
+// policy_engine, which asserts it only when a swap cannot split an event -- and
+// applies every shadow field in one cycle. An event is therefore always scored
+// by exactly one configuration, and which one is a property of where it sits in
+// the stream rather than of when a Python script happened to finish writing.
+//
+// That covers the RISK limits as well as the weights, but only because
+// policy_engine carries risk_cfg through its own pipeline registers. Feeding
+// risk_gate straight from this module would apply new limits to a score
+// computed under the old weights -- atomic for half a configuration is not
+// atomic.
 //
 // Reset leaves the design SAFE rather than merely defined: zero weights, zero
 // order size, and the kill switch ON. A design that comes out of reset able to

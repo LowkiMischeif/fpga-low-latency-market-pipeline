@@ -212,6 +212,68 @@ module tb_risk_gate;
       check("bad_rsv rejected",    last_d.reason === RSN_MALFORMED);
     end
 
+    // --- a large limit plus a large order must not wrap the check ----------
+    // At max_long = 2**23-1 the prospective position exceeds POS_W's signed
+    // range, and computed at POS_W it wraps NEGATIVE -- the comparison reads
+    // false and the limit fails OPEN. Reachable through the supported config
+    // path: export_config accepts exactly this max_long and this order size.
+    do_reset();
+    cfg = mk_cfg(8388607, 8388607, 65535, 500, 1'b0);
+    feed(DEC_BUY, 65535, 100);
+    check("first max-size BUY allowed", last_d.decision === DEC_BUY);
+    // Walk the position all the way to the limit. Reaching the wrap needs the
+    // position itself near 2**23, which takes ~128 max-size fills -- a single
+    // large order against a large limit does NOT get there, which is why the
+    // obvious one-shot vector misses this entirely.
+    do_reset();
+    cfg = mk_cfg(8388607, 8388607, 65535, 500, 1'b0);
+    begin
+      int rejected_at;
+      rejected_at = 0;
+      for (int k = 0; k < 140; k++) begin
+        feed(DEC_BUY, 65535, 100);
+        if (last_d.decision === DEC_HOLD && rejected_at == 0) rejected_at = k;
+        // The position must never go NEGATIVE while buying. If the check
+        // wraps, the limit fails open and this is where it shows.
+        check("position never wraps negative while buying",
+              last_d.position >= 0);
+      end
+      check("the long limit eventually rejected a BUY", rejected_at != 0);
+      check("and it rejected for the right reason", last_d.reason === RSN_MAX_LONG);
+      check("final position is within the limit",
+            last_d.position <= POS_W'(8388607));
+    end
+
+    // Walk the position up to just under the limit, then breach it.
+    do_reset();
+    cfg = mk_cfg(100, 100, 65535, 500, 1'b0);
+    feed(DEC_BUY, 65535, 100);
+    check("order far past max_long is rejected, not wrapped",
+          last_d.decision === DEC_HOLD);
+    check("and for the right reason", last_d.reason === RSN_MAX_LONG);
+    feed(DEC_SELL, 65535, 100);
+    check("mirror: order far past max_short is rejected",
+          last_d.decision === DEC_HOLD);
+    check("mirror reason", last_d.reason === RSN_MAX_SHORT);
+
+    // --- a policy HOLD carries no reason, whatever else is true ------------
+    // The distinction the reason codes exist for: "the policy did not want to
+    // trade" versus "the policy wanted to and was refused".
+    do_reset();
+    cfg = mk_cfg(0, 0, 0, 0, 1'b1);          // kill on, every limit at zero
+    feed(DEC_HOLD, 9999, 9999, 1'b1);
+    check("policy HOLD under a kill switch still has no reason",
+          last_d.reason === RSN_NONE);
+    check("policy HOLD stays a HOLD", last_d.decision === DEC_HOLD);
+    feed(DEC_BUY, 9999, 9999, 1'b1);
+    check("but a BUY in the same state is refused", last_d.reason === RSN_KILL);
+
+    do_reset();
+    cfg = mk_cfg(100000, 100000, 100, 500, 1'b0);
+    feed(DEC_HOLD, 10, 100, 1'b1);
+    check("policy HOLD on an empty book has no reason",
+          last_d.reason === RSN_NONE);
+
     // --- kill switch beats everything --------------------------------------
     do_reset();
     cfg = mk_cfg(100000, 100000, 100, 500, 1'b1);

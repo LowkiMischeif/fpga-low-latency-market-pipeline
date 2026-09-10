@@ -178,33 +178,25 @@ Each stage's constant is defined only once that stage exists in `rtl/`, so the
 constant always equals what the RTL can demonstrate, and the assertion that
 checks it moves in the same commit.
 
-```systemverilog
-// Input-to-decision latency in clock cycles, for non-stalled traffic
-// (m_ready held high). Every stage registers its output exactly once.
-//
-//   constant      cycles  stage             contribution
-//   ------------  ------  ----------------  ----------------------------
-//   LAT_DECODE         1  event_decoder     field slice + encoding checks
-//   LAT_SEQCHK         1  sequence_checker  gap / stale classification
-//   LAT_TOB            1  top_of_book       best bid/ask update
-//   LAT_FEATURE        2  feature_engine    spread, imbalance
-//   LAT_POLICY         2  policy_engine     MAC tree + compare       [planned]
-//   LAT_RISK           1  risk_gate         limit checks             [planned]
-//   ------------  ------
-//   LATENCY_CYCLES     5  <- sum of stages implemented today
-//
-// Stages marked [planned] are not yet in rtl/ and contribute nothing. When a
-// stage lands, its constant and its row here are added in the same commit as
-// the module, and tb/assertions.sv proves the new total.
-localparam int LAT_DECODE     = 1;
-localparam int LAT_SEQCHK     = 1;
-localparam int LATENCY_CYCLES = LAT_DECODE + LAT_SEQCHK;
-```
+**The authoritative table lives in `rtl/market_pkg.sv`, not here.** It was
+duplicated in both places and drifted: this section still claimed
+`LATENCY_CYCLES 5` with `[planned]` markers on `policy_engine` and `risk_gate`
+after both had landed, in the very section that states the rule they broke. One
+copy, in the file the RTL actually reads.
 
-The design target is 8 cycles. That number appears nowhere in the RTL until
-the RTL actually achieves it.
+What this section does state, because it is a rule rather than a value:
 
----
+- Every stage registers its output exactly once, and its cycle count is a
+  named `LAT_*` constant.
+- `LATENCY_CYCLES` is the sum of those constants for stages present in `rtl/`.
+  A planned stage contributes nothing and has no constant.
+- A stage's constant, its row in the `market_pkg.sv` comment table, and the
+  module itself land in one commit.
+- `tb/tb_fixed_latency.sv` measures the total end to end and fails if it is not
+  `LATENCY_CYCLES`; `scripts/mutants.txt` carries mutants that inflate a stage
+  constant and that collapse a stage, and both are killed.
+
+The design target was 8 cycles and the RTL now achieves it.
 
 ## 5. Module specifications
 
@@ -392,9 +384,23 @@ configurations in `tb/configs/` and requires the decisions to differ while the
 latency histograms match bucket for bucket. A mutant that routes a single
 config bit into the stall path is killed by that test.
 
-The configuration is captured into the pipeline at accept, so an event is
-scored entirely by the snapshot active when it entered; a commit landing
-mid-flight cannot produce a decision assembled from two weight sets.
+The configuration — weights, thresholds, order size **and the risk limits** —
+is captured into the pipeline at accept, so an event is scored and gated
+entirely by the snapshot active when it entered. A commit landing mid-flight
+cannot produce a decision assembled from two configurations. Carrying the risk
+limits through `policy_engine` rather than feeding `risk_gate` directly is what
+makes that true of the limits as well as the weights; atomic for half a
+configuration is not atomic.
+
+That snapshot is the mechanism. `config_regs`' commit boundary is defence in
+depth on top of it, and shadow-plus-commit is what makes a *batch* of register
+writes atomic — without it an event accepted between two writes would be scored
+with one new weight and three old ones.
+
+`tb/tb_policy_configs.sv` proves it: a third pass commits the second
+configuration mid-stream with the pipeline never drained, and requires every
+decision to match what config A or config B produced for that event, and never
+a mixture.
 
 **The score cannot reach the `SCORE_W` rail at these widths** — worst case is
 about 1.6e6 against a 2**31 limit — so the saturating accumulate is defensive
