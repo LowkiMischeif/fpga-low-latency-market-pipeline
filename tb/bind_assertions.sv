@@ -9,3 +9,8 @@ bind event_decoder handshake_checker #(.LATENCY(market_pkg::LAT_DECODE))
   u_chk (.clk(clk), .rst_n(rst_n),
          .s_valid(s_valid), .s_ready(s_ready),
          .m_valid(m_valid), .m_ready(m_ready));
+
+bind sequence_checker handshake_checker #(.LATENCY(market_pkg::LAT_SEQCHK))
+  u_chk (.clk(clk), .rst_n(rst_n),
+         .s_valid(s_valid), .s_ready(s_ready),
+         .m_valid(m_valid), .m_ready(m_ready));

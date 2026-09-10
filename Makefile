@@ -16,11 +16,23 @@ SYNTH_TOP ?= market_pipeline_top
 all: lint pytest
 
 # Package must lead the file list: market_pkg.sv defines every width/enum/struct.
-# No --top-module: market_pipeline_top does not exist until the integration
-# stage, and forcing a top that is absent fails the lint outright. Verilator
-# infers the top from what is present; the package still leads the list.
+# Lint each module as its own explicit top.
+#
+# Forcing --top-module market_pipeline_top fails until the integration stage
+# builds it; omitting --top-module entirely trips MULTITOP as soon as there is
+# more than one leaf module. Naming each module in turn avoids both, and is a
+# stronger check: every module must lint cleanly on its own, not merely as
+# part of a tree where something else drives its inputs. The package leads the
+# file list so its types resolve.
+MODULES := $(basename $(notdir $(filter-out rtl/market_pkg.sv,$(RTL))))
 lint:
-	verilator --lint-only -Wall rtl/market_pkg.sv $(filter-out rtl/market_pkg.sv,$(RTL))
+	@test -n "$(MODULES)" || { echo "no RTL modules to lint"; exit 1; }
+	@for m in $(MODULES); do \
+	  echo "== lint $$m"; \
+	  verilator --lint-only -Wall --top-module $$m \
+	    rtl/market_pkg.sv $(filter-out rtl/market_pkg.sv,$(RTL)) || exit 1; \
+	done
+	@echo "== lint clean: $(MODULES)"
 
 sim:
 	$(VIVADO) -mode batch -notrace -source scripts/run_sim.tcl -tclargs $(TOP)
