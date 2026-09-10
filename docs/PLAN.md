@@ -284,9 +284,9 @@ A SystemVerilog/Vivado implementation of a deterministic market-event
 processing and risk-decision pipeline.
 
 ## Results
-- Fixed input-to-decision latency: 8 clock cycles
-- Target clock: 250 MHz
-- Core pipeline latency: 32 ns
+- Fixed input-to-decision latency: <N> clock cycles
+- Target clock: 100 MHz (Basys 3 oscillator, fixed)
+- Core pipeline latency: <N * 10.0> ns
 - Functional verification: directed + randomized replay tests
 - Safety checks: sequence validation, saturation arithmetic, position limits,
   quantity limits, and kill switch
@@ -294,7 +294,10 @@ processing and risk-decision pipeline.
 - Build: Vivado Tcl, XDC constraints, synthesis and timing reports committed
 ```
 
-Only state values actually measured. If timing does not close at 250 MHz, change the number. Honest evidence is much more impressive than a high unverified claim.
+Only state values actually measured. The placeholders above are placeholders on purpose: fill them from
+`results/BUILD_SCOPE.md`, which `scripts/build.tcl` generates from the actual post-route run, and from the
+latency the assertions prove. This board's oscillator is fixed at 100 MHz with no MMCM, so 10.0 ns per cycle
+is the only conversion available. Honest evidence is much more impressive than a high unverified claim.
 
 ## Skills it demonstrates
 
