@@ -158,12 +158,25 @@ module handshake_checker #(
   // The headline claim, in its honest conditional form: with the output free
   // to drain, an accepted input appears at the output exactly LATENCY cycles
   // later -- not "at least", not "on average".
+  //
+  // Lint note: verilator 5.032 cannot parse a parameterised cycle delay in a
+  // sequence expression ("Unsupported: ## id cycle delay range expression"),
+  // so this one property is hidden from it. xsim -- which is what actually
+  // runs the simulation and evaluates the assertion -- sees it. Hiding the
+  // single unsupported property rather than excluding the whole file keeps
+  // the other twelve under `make lint-tb`.
+  //
+  // The consequence is explicit: verilator never checks THIS property's
+  // syntax, so a typo inside it surfaces only when make sim runs. That is
+  // acceptable because no CI job runs xsim anyway; make sim-all is the gate.
+`ifndef VERILATOR
   property p_fixed_latency;
     @(posedge clk) disable iff (!rst_n)
       (s_valid && s_ready && m_ready) |-> ##LATENCY m_valid;
   endproperty
   a_fixed_latency: assert property (p_fixed_latency)
     else $error("output did not appear exactly %0d cycles after accept", LATENCY);
+`endif
 
   // The other half of "exactly": nothing may come out EARLY either, and a
   // drained pipe must be silent. Without this, a stage that asserted m_valid

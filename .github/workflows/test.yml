@@ -16,6 +16,14 @@ jobs:
       - name: lint rtl
         run: make lint
 
+      # Without this, CI never elaborates tb/ at all: `make lint` globs rtl/
+      # only, so a syntax error in a testbench, an unresolved bind, or an
+      # unconnected DUT port goes green here and surfaces only when someone
+      # runs `make sim` locally. That happened for the whole of the
+      # decode/validate branch.
+      - name: lint testbenches
+        run: make lint-tb
+
   python:
     name: pytest
     runs-on: ubuntu-latest

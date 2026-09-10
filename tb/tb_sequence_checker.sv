@@ -496,7 +496,7 @@ module tb_sequence_checker;
       n_gaps         = 0;
       nxt            = 16'd0;
       saw_saturation = 1'b0;
-      n_sat          = int'(CNT_MAX / SAT_STEP) + 8;
+      n_sat          = int'(CNT_MAX / longint'(SAT_STEP)) + 8;
 
       // Back-to-back accepts, one per cycle: valid stays high and m_ready is
       // high, so s_ready is high on every cycle.
@@ -511,7 +511,7 @@ module tb_sequence_checker;
         s_event.seq = nxt;
         @(posedge clk);            // accepted; the counter updates on this edge
         @(negedge clk);
-        ref_missed = ref_missed + SAT_STEP;
+        ref_missed = ref_missed + longint'(SAT_STEP);
         n_gaps     = n_gaps + 1;
         expected   = (ref_missed > CNT_MAX) ? CNT_MAX : ref_missed;
         if (expected == CNT_MAX) saw_saturation = 1'b1;

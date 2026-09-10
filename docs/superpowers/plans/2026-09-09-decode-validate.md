@@ -18,7 +18,10 @@
 - **`LATENCY_CYCLES` is a sum of named per-stage constants**, never a literal, and counts only stages present in `rtl/`. Its value this branch is `2`.
 - **Every stage registers its output exactly once.** `ready` propagates combinationally; no skid buffers.
 - **Errors are flagged and forwarded, never dropped.** Discarding market data is `risk_gate`'s decision, not an upstream one.
-- **Reset is asynchronous assert, active low (`rst_n`), synchronous release** — consistent across every module.
+- **Reset is asynchronous, active low (`rst_n`), with no synchronizer at
+  module level** — consistent across every module. A synchronizer is added
+  once at `market_pipeline_top`. (An earlier version of this line said
+  "synchronous release", which no module implements.)
 - **Lint clean** under `verilator --lint-only -Wall` (`make lint`), zero warnings.
 - **Simulation failures must call `$fatal`.** xsim exits 0 on `$fatal`; `scripts/run_sim.tcl` catches it by scanning the log for `Fatal:`/`Error:`.
 - Traces in `tb/traces/` are generated artifacts and stay gitignored.
