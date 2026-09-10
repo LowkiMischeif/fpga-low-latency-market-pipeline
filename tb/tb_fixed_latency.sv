@@ -38,6 +38,7 @@ module tb_fixed_latency;
   event_err_t         d_err, m_err;
   logic               d_valid, d_ready, m_valid, m_ready;
   logic [CNT_W-1:0]   gap_count, stale_count, missed_total, bad_event_count;
+  logic [CNT_W-1:0] resync_count;
 
   event_decoder u_dec (
     .clk(clk), .rst_n(rst_n),
@@ -49,6 +50,7 @@ module tb_fixed_latency;
     .clk(clk), .rst_n(rst_n),
     .s_event(d_event), .s_err(d_err), .s_valid(d_valid), .s_ready(d_ready),
     .m_event(m_event), .m_err(m_err), .m_valid(m_valid), .m_ready(m_ready),
+    .resync_count(resync_count),
     .gap_count(gap_count), .stale_count(stale_count),
     .missed_total(missed_total), .bad_event_count(bad_event_count)
   );
@@ -128,7 +130,7 @@ module tb_fixed_latency;
     roll = rand_range(rng, 0, 99);
     t  = (roll < 6) ? 8'hFF : 8'(1 + (i % 3));
     roll = rand_range(rng, 0, 99);
-    sd = (roll < 6) ? 2'b11 : ((i % 2) ? SIDE_BID : SIDE_ASK);
+    sd = (roll < 6) ? 2'b11 : ((i % 2 != 0) ? SIDE_BID : SIDE_ASK);
     roll = rand_range(rng, 0, 99);
     rv = (roll < 4) ? 2'b01 : 2'b00;
 
@@ -193,7 +195,7 @@ module tb_fixed_latency;
     $display("INFO: latency histogram (cycles: count)");
     foreach (hist[i]) if (hist[i] != 0) $display("INFO:   %0d: %0d", i, hist[i]);
     $display("INFO: latency min=%0d mean=%0d max=%0d over %0d events",
-             lat_min, (measured == 0) ? 0 : lat_sum / measured, lat_max,
+             lat_min, (measured == 0) ? 64'd0 : lat_sum / longint'(measured), lat_max,
              measured);
     $display("INFO: at the Basys 3's fixed 100 MHz that is %0d ns",
              lat_max * 10);
@@ -207,7 +209,7 @@ module tb_fixed_latency;
       errors++;
       $error("FAIL: latency is not fixed: min=%0d max=%0d", lat_min, lat_max);
     end
-    if (lat_max !== LATENCY_CYCLES) begin
+    if (lat_max !== longint'(LATENCY_CYCLES)) begin
       errors++;
       $error("FAIL: measured latency %0d != LATENCY_CYCLES %0d",
              lat_max, LATENCY_CYCLES);

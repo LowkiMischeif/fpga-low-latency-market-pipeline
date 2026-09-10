@@ -121,7 +121,24 @@ timing closure demands it, the fix is skid buffers at named stage boundaries,
 which adds a cycle per buffered stage — and `LATENCY_CYCLES` moves with it.
 Recorded in `docs/TIMING_CLOSURE.md` if it happens.
 
-### 3.3 Fixed-point convention
+### 3.3 Reset
+
+**Reset convention: asynchronous reset, active low (`rst_n`), no synchronizer
+at module level.** Every module resets asynchronously on `negedge rst_n` and
+de-asserts asynchronously too. A reset synchronizer is added **once**, at
+`market_pipeline_top`, rather than per module.
+
+Stating it this way because the alternative was stated and was not true: an
+earlier draft claimed "synchronous release", which no module implements and
+which behavioural simulation cannot distinguish either way. On the target part
+an asynchronously released reset can violate recovery/removal timing and drop
+different flops out of reset on different cycles -- in `sequence_checker` that
+would let `expect_seq` and `primed` come out one cycle before `m_valid`,
+producing a spurious classification on the first event. That is a real risk,
+and the place to fix it is once at the top, where the external pushbutton
+enters the design, not in seven copies.
+
+### 3.4 Fixed-point convention
 
 - **Price**: 16-bit unsigned, Q14.2 — quarter-tick resolution.
   `PRICE_FRAC_W = 2`.
@@ -432,7 +449,7 @@ MAJOR findings fixed before merge.
 | `feat/decode-validate` | `market_pkg`, `event_decoder`, `sequence_checker`, `generate_events.py`, `tb_event_decoder`, `tb/assertions.sv`, CI guards removed |
 | `feat/book-features` | `top_of_book`, `feature_engine`, `analyze_latency.py` |
 | `feat/policy-risk` | `policy_engine`, `risk_gate`, register bus, `train_policy.py`, `export_config.py` |
-| `feat/integration-timing` | `market_pipeline_top`, full XDC with I/O delays, timing closure, five docs, README |
+| `feat/integration-timing` | `market_pipeline_top` **including the single reset synchronizer (§3.3)**, full XDC with I/O delays plus a recovery/removal check on the synchronized reset, timing closure, five docs, README |
 
 `LATENCY_CYCLES` grows across all four as a running sum, so the stated number
 never outruns the assertion that proves it.

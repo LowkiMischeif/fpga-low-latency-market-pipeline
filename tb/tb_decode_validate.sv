@@ -74,7 +74,7 @@ module tb_decode_validate;
   bit ref_gap   [0:MAX_EVENTS-1];
   bit ref_stale [0:MAX_EVENTS-1];
   longint unsigned ref_gap_count, ref_stale_count, ref_missed_total,
-                   ref_bad_count;
+                   ref_bad_count, ref_resync_count;
 
   // ------------------------------------------------------------------
   // Deterministic stimulus randomization.
@@ -188,6 +188,7 @@ module tb_decode_validate;
     ref_stale_count  = 0;
     ref_missed_total = 0;
     ref_bad_count    = 0;
+    ref_resync_count = 0;
     audit_errs       = 0;
 
     for (int i = 0; i < n_events; i++) begin
@@ -227,11 +228,12 @@ module tb_decode_validate;
       end
       if (ref_stale[i]) ref_stale_count++;
       if (r_btype || r_bside || r_brsv) ref_bad_count++;
+      if (r_force_resync) ref_resync_count++;
 
       // --- audit the golden CSV against the reference ---------------
-      audit(i, "etype",    exp_etype[i][TYPE_W-1:0],   w[63:56], audit_errs);
-      audit(i, "symbol",   exp_symbol[i][SYMBOL_W-1:0],w[55:52], audit_errs);
-      audit(i, "side",     exp_side[i][SIDE_W-1:0],    w[51:50], audit_errs);
+      audit(i, "etype",    16'(exp_etype[i][TYPE_W-1:0]),    16'(w[63:56]), audit_errs);
+      audit(i, "symbol",   16'(exp_symbol[i][SYMBOL_W-1:0]), 16'(w[55:52]), audit_errs);
+      audit(i, "side",     16'(exp_side[i][SIDE_W-1:0]),     16'(w[51:50]), audit_errs);
       audit(i, "price",    exp_price[i][PRICE_W-1:0],  w[49:34], audit_errs);
       audit(i, "qty",      exp_qty[i][QTY_W-1:0],      w[33:18], audit_errs);
       audit(i, "seq",      exp_seq[i][SEQ_W-1:0],      rx,       audit_errs);
@@ -249,6 +251,7 @@ module tb_decode_validate;
              n_events);
     $display("INFO: reference totals gap=%0d stale=%0d missed=%0d bad=%0d",
              ref_gap_count, ref_stale_count, ref_missed_total, ref_bad_count);
+    $display("INFO: reference forced resyncs %0d", ref_resync_count);
   endtask
 
   initial begin
@@ -387,6 +390,14 @@ module tb_decode_validate;
     if (missed_total !== ref_missed_total[CNT_W-1:0]) begin
       errors++;
       $error("FAIL: missed_total %0d, reference %0d", missed_total, ref_missed_total);
+    end
+    // The stale watchdog is new telemetry; check it rather than merely
+    // declaring the port. Verilator's UNUSEDSIGNAL caught that it was wired
+    // up and then never looked at.
+    if (resync_count !== ref_resync_count[CNT_W-1:0]) begin
+      errors++;
+      $error("FAIL: resync_count %0d, reference says %0d",
+             resync_count, ref_resync_count);
     end
     if (bad_event_count !== ref_bad_count[CNT_W-1:0]) begin
       errors++;

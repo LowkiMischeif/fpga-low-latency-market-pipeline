@@ -196,9 +196,21 @@ Vivado Simulator supports behavioral, functional, and timing simulation across V
 
 **Goal:** Turn a class project into an FPGA-team-quality portfolio artifact.
 
+- Add the single reset synchronizer:
+  - Every module resets asynchronously on `negedge rst_n` with **no
+    synchronizer at module level** — that is the project's stated convention,
+    not an oversight.
+  - `market_pipeline_top` instantiates the one synchronizer, where the
+    external pushbutton enters the design. Asynchronous release can otherwise
+    violate recovery/removal timing and drop different flops out of reset on
+    different cycles.
+  - Behavioural simulation cannot distinguish synchronous from asynchronous
+    release, so this is a synthesis-and-constraints item, verified by the
+    recovery/removal check below rather than by a testbench.
 - Add an XDC constraints file:
   - Clock definition.
   - Explicit input/output delay assumptions if using external I/O.
+  - A recovery/removal check on the synchronized reset.
   - Carefully documented clock-domain crossings if more than one clock is used.
 - Run:
   - Synthesis.

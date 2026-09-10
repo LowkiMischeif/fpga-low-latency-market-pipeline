@@ -12,8 +12,8 @@ TB      := $(wildcard tb/*.sv)
 TOP       ?= tb_market_pipeline_top
 SYNTH_TOP ?= market_pipeline_top
 
-.PHONY: all lint sim build pytest trace clean
-all: lint pytest
+.PHONY: all lint lint-tb sim sim-all build pytest trace clean
+all: lint lint-tb pytest
 
 # Package must lead the file list: market_pkg.sv defines every width/enum/struct.
 # Lint each module as its own explicit top.
@@ -34,11 +34,61 @@ lint:
 	done
 	@echo "== lint clean: $(MODULES)"
 
+# Lint the testbenches.
+#
+# CI ran green for the whole of the decode/validate branch without ever
+# elaborating tb/, because `lint` above globs rtl/ only. A syntax error in any
+# testbench went green on GitHub and surfaced only when someone ran make sim
+# locally. This target closes that.
+#
+# Each testbench is elaborated as its own top against the full RTL plus the
+# assertion library, so a bind that does not resolve or a port that is not
+# connected is an error here rather than a surprise at simulation time.
+#
+# The waivers are testbench idioms, not defects:
+#   DECLFILENAME  tb/assertions.sv declares handshake_checker; the filename is
+#                 fixed by the layout in CLAUDE.md.
+#   BLKSEQ        `always #5 clk = ~clk;` is the standard clock generator.
+#   UNUSEDSIGNAL  verilator's dataflow does not track variables read only
+#                 inside tasks and initial blocks (the driver RNG state).
+#   SYNCASYNCNET  a testbench drives rst_n procedurally while the DUT samples
+#                 it asynchronously. Unavoidable, and harmless in simulation.
+# Everything else stays on. PINMISSING in particular earned its keep the first
+# time this target ran, catching a sequence_checker.resync_count that had been
+# added to the module and never connected in tb_fixed_latency.
+TB_SRCS  := $(wildcard tb/tb_*.sv)
+TB_TOPS  := $(basename $(notdir $(TB_SRCS)))
+TB_LIB   := rtl/market_pkg.sv $(filter-out rtl/market_pkg.sv,$(RTL)) \
+            tb/assertions.sv tb/bind_assertions.sv
+TB_WAIVE := -Wno-DECLFILENAME -Wno-BLKSEQ -Wno-UNUSEDSIGNAL -Wno-SYNCASYNCNET
+
+lint-tb:
+	@test -n "$(TB_TOPS)" || { echo "no testbenches to lint"; exit 1; }
+	@for t in $(TB_TOPS); do \
+	  echo "== lint-tb $$t"; \
+	  verilator --lint-only -Wall --timing $(TB_WAIVE) --top-module $$t \
+	    $(TB_LIB) tb/$$t.sv || exit 1; \
+	done
+	@echo "== lint-tb clean: $(TB_TOPS)"
+
 # PLUSARGS is a space-separated list of NAME=VALUE forwarded to the sim as
 # +NAME=VALUE, e.g.  make sim TOP=tb_decode_validate PLUSARGS="SEED=7"
 PLUSARGS ?=
 sim:
 	$(VIVADO) -mode batch -notrace -source scripts/run_sim.tcl -tclargs $(TOP) $(PLUSARGS)
+
+# Run every testbench. run_sim.tcl already fails a run on any Fatal:/Error:
+# line and on a missing PASS: marker, so a non-zero make sim is the gate here;
+# the loop stops at the first failure rather than reporting a green summary
+# over a red run. Regenerates the trace first, since tb_decode_validate reads
+# a gitignored trace that will not exist on a fresh clone.
+sim-all: trace
+	@test -n "$(TB_TOPS)" || { echo "no testbenches to run"; exit 1; }
+	@for t in $(TB_TOPS); do \
+	  echo "== sim $$t"; \
+	  $(MAKE) --no-print-directory sim TOP=$$t || exit 1; \
+	done
+	@echo "== sim-all passed: $(TB_TOPS)"
 
 build:
 	$(VIVADO) -mode batch -notrace -source scripts/build.tcl -tclargs $(SYNTH_TOP)
