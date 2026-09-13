@@ -23,7 +23,7 @@ reports, and write documentation whose every number cites a committed artifact.
 
 ## 2. `market_pipeline_top.sv`
 
-Ports, all Basys 3 rev C pins from Digilent's master XDC:
+Ports, all Basys 3 pins from Digilent's Basys-3-Master.xdc, which is labelled Rev B:
 
 | Port | Pin(s) | Role |
 |---|---|---|
