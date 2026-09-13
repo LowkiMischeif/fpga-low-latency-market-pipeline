@@ -308,9 +308,9 @@ package market_pkg;
   // Configuration register map.
   //
   // A plain synchronous write port -- not PCIe, not AXI. Writes land in a
-  // SHADOW copy and only become active when a commit is taken at an event
-  // boundary, so a decision is never built from half of one weight set and
-  // half of another. See config_regs.sv.
+  // SHADOW copy and become active together when CFG_COMMIT is written, so a
+  // batch of writes is atomic. Per-event atomicity comes from policy_engine
+  // snapshotting the whole configuration at accept. See config_regs.sv.
   // ---------------------------------------------------------------------
   localparam int CFG_ADDR_W = 5;
   localparam int CFG_DATA_W = 32;
@@ -328,7 +328,7 @@ package market_pkg;
     CFG_MAX_ORDER_QTY = 5'd9,
     CFG_MAX_SPREAD    = 5'd10,
     CFG_KILL          = 5'd11,
-    CFG_COMMIT        = 5'd12   // write 1 to arm; takes effect at a boundary
+    CFG_COMMIT        = 5'd12   // write 1: shadow becomes active on this edge
   } cfg_addr_e;
 
 endpackage

@@ -385,22 +385,42 @@ latency histograms match bucket for bucket. A mutant that routes a single
 config bit into the stall path is killed by that test.
 
 The configuration — weights, thresholds, order size **and the risk limits** —
-is captured into the pipeline at accept, so an event is scored and gated
-entirely by the snapshot active when it entered. A commit landing mid-flight
+is captured into the pipeline when `policy_engine` accepts the event, so it is
+scored and gated entirely by the snapshot active on that edge — not when it
+entered the pipeline, several stages earlier. A commit landing mid-flight
 cannot produce a decision assembled from two configurations. Carrying the risk
 limits through `policy_engine` rather than feeding `risk_gate` directly is what
 makes that true of the limits as well as the weights; atomic for half a
 configuration is not atomic.
 
-That snapshot is the mechanism. `config_regs`' commit boundary is defence in
-depth on top of it, and shadow-plus-commit is what makes a *batch* of register
-writes atomic — without it an event accepted between two writes would be scored
-with one new weight and three old ones.
+**That snapshot is the atomicity mechanism, and the only one.** There is no
+handshake timing the swap against events in flight. Writing `CFG_COMMIT` copies
+the shadow configuration into the active one on that clock edge, and whichever
+configuration is active on the edge an event is accepted is the one that scores
+and gates it, start to finish. A commit landing mid-flight changes only what
+later events see.
 
-`tb/tb_policy_configs.sv` proves it: a third pass commits the second
-configuration mid-stream with the pipeline never drained, and requires every
-decision to match what config A or config B produced for that event, and never
-a mixture.
+`config_regs` has one separate job: shadow-plus-commit makes a *batch* of
+register writes atomic. Without it an event accepted between two writes would be
+scored with one new weight and three old ones — a configuration nobody tuned.
+
+An earlier version also routed a "safe to swap" signal from `policy_engine` back
+to `config_regs`. Forcing it permanently high changed no output, because the
+snapshot had already made it redundant, so it was deleted rather than kept as
+decoration that looked load-bearing.
+
+`tb/tb_policy_engine.sv` pins it directly: it changes every configuration
+field — all four weights with non-zero features, both thresholds, order size,
+every risk limit and the kill switch — one cycle after accept, between two
+back-to-back accepts, and during a stall that holds an event *in* the snapshot
+stage with the previous one waiting in the output register. Each event's
+outputs must reflect the configuration it was accepted under. Seven mutants
+aimed at that test make the snapshot leak: stage 2 reading any live field, the
+snapshot reloading on stalled edges, or the multiplies retimed into stage 2.
+`tb/tb_policy_configs.sv` adds the end-to-end view — a commit mid-stream with
+the pipeline never drained — but on its own it cannot
+prove the snapshot: the two committed configurations share their risk limits
+and order size, and it accepts an event on every edge.
 
 **The score cannot reach the `SCORE_W` rail at these widths** — worst case is
 about 1.6e6 against a 2**31 limit — so the saturating accumulate is defensive
@@ -413,6 +433,13 @@ saturation would start doing real work.
 Rejects with a reason code on: maximum long position, maximum short position,
 maximum order quantity, spread guard, kill switch, and any event carrying
 `gap`, `stale`, or a malformed flag from upstream.
+
+**A kill-switch commit is not retroactive.** It applies to every event
+`policy_engine` accepts after the commit edge. Up to `LAT_POLICY + LAT_RISK`
+(three) events already past that point are still gated under the configuration
+they were accepted with, kill switch included. That follows from the
+per-event snapshot and is deliberate: an event is never gated by a mixture of
+two configurations, even to stop it.
 
 **The spread guard must be qualified by `!book_empty`.** Under §5.4's single
 gating rule an empty book reports `spread == 0`, which is the tightest spread

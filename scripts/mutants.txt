@@ -38,6 +38,19 @@ pol: empty book still decides @@ rtl/policy_engine.sv @@ tb_policy_engine @@ if 
 # achievable range instead, and fails if it ever grows past a tenth of the
 # rail, which is when this mutant would become killable and belong here.
 
+# Snapshot bypass: stage 2 reads the LIVE config instead of the value captured
+# on the accept edge. These are the mutants a previous review showed the
+# end-to-end config test cannot kill -- the committed configs share risk limits
+# and order size, and its mid-stream pass accepts on every edge -- so they are
+# aimed at the directed snapshot test in tb_policy_engine instead.
+pol-snap: w0 read live @@ rtl/policy_engine.sv @@ tb_policy_engine @@ assign score2 = score_sat_add(scaled_sat2, SCORE_W'(w0_1)); @@ assign score2 = score_sat_add(scaled_sat2, SCORE_W'(cfg.w0));
+pol-snap: theta_buy read live @@ rtl/policy_engine.sv @@ tb_policy_engine @@ else if (score2 >  tbuy_1)       dec2 = DEC_BUY; @@ else if (score2 >  cfg.theta_buy) dec2 = DEC_BUY;
+pol-snap: theta_sell read live @@ rtl/policy_engine.sv @@ tb_policy_engine @@ else if (score2 <  tsell_1)      dec2 = DEC_SELL; @@ else if (score2 <  cfg.theta_sell) dec2 = DEC_SELL;
+pol-snap: order_qty read live @@ rtl/policy_engine.sv @@ tb_policy_engine @@       m_order_qty <= oq_1; @@       m_order_qty <= cfg.order_qty;
+pol-snap: snapshot reloads on every edge @@ rtl/policy_engine.sv @@ tb_policy_engine @@   assign snap_en = advance; @@   assign snap_en = 1'b1;
+pol-snap: multiplies moved to stage 2 on live weights @@ rtl/policy_engine.sv @@ tb_policy_engine @@   assign acc2    = ACC_W'(p_spread1) + ACC_W'(p_imb1) + ACC_W'(p_mom1); @@   assign acc2    = ACC_W'(cfg.w_spread * ft1.spread) + ACC_W'(cfg.w_imbalance * ft1.imbalance) + ACC_W'(cfg.w_momentum * ft1.momentum);
+pol-snap: risk limits read live @@ rtl/policy_engine.sv @@ tb_policy_engine @@       m_risk_cfg  <= rc_1; @@       m_risk_cfg  <= risk_cfg_in;
+
 == risk_gate ==
 # NOT LISTED: "risk: spread guard not qualified by book_empty".
 # The qualification is real and spec 5.6 requires it, but it is currently
@@ -63,23 +76,15 @@ risk: rejected trade still moves position @@ rtl/risk_gate.sv @@ tb_risk_gate @@
 risk: max order qty not enforced @@ rtl/risk_gate.sv @@ tb_risk_gate @@ else if (s_order_qty > cfg.max_order_qty) reason_c = RSN_MAX_QTY; @@ else if (1'b0) reason_c = RSN_MAX_QTY;
 
 == config_regs ==
-cfg: writes go live without a commit @@ rtl/config_regs.sv @@ tb_config_regs @@ if (commit_pending && boundary) begin @@ if (1'b1) begin
-cfg: commit ignores the boundary @@ rtl/config_regs.sv @@ tb_config_regs @@ if (commit_pending && boundary) begin @@ if (commit_pending) begin
+cfg: writes go live without a commit @@ rtl/config_regs.sv @@ tb_config_regs @@ CFG_W0:            sh_policy.w0          <= W_W'(cfg_wdata); @@ CFG_W0:            begin sh_policy.w0 <= W_W'(cfg_wdata); policy_cfg.w0 <= W_W'(cfg_wdata); end
+cfg: commit ignores its data bit @@ rtl/config_regs.sv @@ tb_config_regs @@ CFG_COMMIT: if (cfg_wdata[0]) begin @@ CFG_COMMIT: if (1'b1) begin
+cfg: commit applies only the policy half @@ rtl/config_regs.sv @@ tb_config_regs @@             risk_cfg     <= sh_risk; @@             risk_cfg     <= risk_cfg;
 cfg: reset does not arm the kill switch @@ rtl/config_regs.sv @@ tb_config_regs @@       risk_cfg.kill  <= 1'b1; @@       risk_cfg.kill  <= 1'b0;
 
 == latency and configuration independence ==
 lat: package claims one cycle too many @@ rtl/market_pkg.sv @@ tb_fixed_latency @@ localparam int LAT_TOB        = 1; @@ localparam int LAT_TOB        = 2;
 lat: policy claims one cycle too many @@ rtl/market_pkg.sv @@ tb_policy_configs @@ localparam int LAT_POLICY     = 2; @@ localparam int LAT_POLICY     = 3;
 lat: feature_engine collapsed to one cycle @@ rtl/feature_engine.sv @@ tb_fixed_latency @@       m_valid <= v1; @@       m_valid <= s_valid;
-# NOT LISTED: "cfg-safe: commit boundary always open".
-# Forcing cfg_boundary to 1 changes nothing observable, and the reason is worth
-# knowing: atomicity comes from the per-event SNAPSHOT, not from the boundary.
-# policy_engine captures the weights, thresholds, order size and the risk
-# limits into stage 1 on the accept edge, all from one clock edge, so an event
-# is scored by one configuration generation no matter when the shadow swaps.
-# The boundary is defence in depth for a future where that snapshot changes.
-# What IS load-bearing is shadow-plus-commit, which makes a BATCH of writes
-# atomic -- "cfg: writes go live without a commit" is listed and is killed.
 risk: position check wraps at POS_W @@ rtl/risk_gate.sv @@ tb_risk_gate @@ localparam int CHK_W = POS_W + 1; @@ localparam int CHK_W = POS_W;
 risk: policy HOLD still gets a reason @@ rtl/risk_gate.sv @@ tb_risk_gate @@ if      (s_decision == DEC_HOLD) reason_c = RSN_NONE; @@ if      (1'b0)                  reason_c = RSN_NONE;
 cfg-indep: a config bit reaches the stall path @@ rtl/policy_engine.sv @@ tb_policy_configs @@ assign advance = m_ready || !v2; @@ assign advance = (m_ready || !v2) && !(cfg.w_spread[10] && v2);

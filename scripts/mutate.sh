@@ -17,7 +17,8 @@ cd "$(dirname "$0")/.."
 FILTER="${1:-}"
 PASS=0; FAIL=0
 BACKUP=$(mktemp -d)
-trap 'cp -f "$BACKUP"/*.sv rtl/ 2>/dev/null; rm -rf "$BACKUP"' EXIT
+LOG=$(mktemp)
+trap 'cp -f "$BACKUP"/*.sv rtl/ 2>/dev/null; rm -rf "$BACKUP" "$LOG"' EXIT
 cp rtl/*.sv "$BACKUP"/
 
 # Mutants live in scripts/mutants.txt, one per line:
@@ -38,16 +39,47 @@ if sys.argv[2] not in s:
     sys.exit(1)
 p.write_text(s.replace(sys.argv[2], sys.argv[3], 1))
 PY
-  if make sim TOP="$tb" >/dev/null 2>&1; then
+  # A kill needs evidence the simulation RAN and failed. A mutant whose
+  # replacement text does not compile also makes `make sim` fail, and scoring
+  # that as a kill would count a typo in mutants.txt as a test catching a bug.
+  # run_sim.tcl exits before xsim on a compile or elaboration error, so
+  # "SIMULATION FAILED" can only come from a simulation that started. It is not
+  # narrowed to a FAIL: line on purpose: a mutant that fires an assertion on
+  # every edge can hit the log-size cap, and that is a genuine catch.
+  if make sim TOP="$tb" > "$LOG" 2>&1; then
     printf '%-52s SURVIVED\n' "$name"; FAIL=$((FAIL+1))
-  else
+  elif grep -q "SIMULATION FAILED" "$LOG"; then
     printf '%-52s killed\n' "$name"; PASS=$((PASS+1))
+  else
+    printf '%-52s DOES NOT BUILD\n' "$name"; FAIL=$((FAIL+1))
   fi
   cp -f "$BACKUP/$(basename "$file")" "$file"
 }
 
 MUTANTS="$(dirname "$0")/mutants.txt"
 [ -f "$MUTANTS" ] || { echo "missing $MUTANTS"; exit 1; }
+
+# Baseline: every testbench a selected mutant will be scored against must PASS
+# unmutated, before any mutation is applied.
+#
+# A mutant counts as killed when `make sim` fails, and `make sim` fails for any
+# reason -- including a testbench that does not even elaborate. Without this
+# check, a broken testbench turns every mutant aimed at it into a "kill". That
+# happened: tb_policy_engine stopped elaborating (xsim rejects nonblocking
+# writes to associative arrays) and the suite still reported every one of its
+# mutants killed, including five written specifically to be hard to kill.
+echo "== baseline: unmutated testbenches must pass"
+for tb in $(grep -v '^#' "$MUTANTS" | grep ' @@ ' \
+            | awk -F' @@ ' -v f="$FILTER" 'f == "" || index($1, f) { print $3 }' \
+            | sort -u); do
+  if make sim TOP="$tb" >/dev/null 2>&1; then
+    printf '   %-30s pass\n' "$tb"
+  else
+    printf '   %-30s FAILS UNMUTATED\n' "$tb"
+    echo "ABORT: $tb does not pass without a mutation, so no kill against it would mean anything."
+    exit 2
+  fi
+done
 
 section=""
 while IFS= read -r line; do
@@ -64,5 +96,9 @@ while IFS= read -r line; do
 done < "$MUTANTS"
 
 echo
+if [ $((PASS + FAIL)) -eq 0 ]; then
+  echo "ERROR: no mutant matched filter '$FILTER'."
+  exit 3
+fi
 echo "killed $PASS, survived $FAIL"
 [ "$FAIL" -eq 0 ]

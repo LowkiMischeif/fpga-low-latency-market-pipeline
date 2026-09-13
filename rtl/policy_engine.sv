@@ -14,10 +14,11 @@
 // a real trace by running two configs and comparing latency histograms bit
 // for bit.
 //
-// The config is captured INTO the pipeline at accept, so an event is scored
-// entirely with the snapshot that was active when it entered. A commit landing
-// mid-flight cannot produce a decision built from half of one weight set and
-// half of another.
+// The config is captured INTO the pipeline on the edge this module accepts an
+// event -- not when the event entered the pipeline, several stages earlier --
+// so it is scored entirely by the snapshot active on that edge. A commit
+// landing mid-flight cannot produce a decision built from half of one weight
+// set and half of another.
 //
 // Latency: LAT_POLICY (2 cycles) when m_ready is held high.
 module policy_engine
@@ -47,18 +48,7 @@ module policy_engine
   output logic [QTY_W-1:0]          m_order_qty,
   output risk_cfg_t     m_risk_cfg,
   output logic          m_valid,
-  input  logic          m_ready,
-
-  // Asserted when a configuration swap cannot split an event: either an event
-  // is being accepted right now, or the engine is idle.
-  //
-  // Defence in depth, not the mechanism. Atomicity actually comes from the
-  // per-event snapshot below -- weights, thresholds, order size and the risk
-  // limits are all captured into stage 1 on the accept edge, from one clock
-  // edge -- so an event is scored by one configuration generation whenever the
-  // shadow swaps. Forcing this signal high changes no output, which is why
-  // scripts/mutants.txt lists that mutation as deliberately absent.
-  output logic          cfg_boundary
+  input  logic          m_ready
 );
 
   // ------------------------------------------------------------------
@@ -82,8 +72,6 @@ module policy_engine
   logic v1, v2, advance;
   assign advance = m_ready || !v2;
   assign s_ready = advance;
-
-  assign cfg_boundary = s_ready && (s_valid || !(v1 || v2));
 
   market_event_t ev1;
   event_err_t    er1;
@@ -146,12 +134,38 @@ module policy_engine
     else                             dec2 = DEC_HOLD;
   end
 
+  // ------------------------------------------------------------------
+  // Per-event configuration snapshot.
+  //
+  // Loaded ONLY on an advancing edge -- the same enable as the stage-1 data it
+  // belongs to (p_spread1 and friends, below). That shared enable is the whole
+  // atomicity mechanism: an event held in stage 1 by a stall keeps the
+  // configuration it was accepted under. Loading these every edge instead
+  // would let the live configuration leak into a stalled event, so its w0 and
+  // thresholds would come from one config and its products from another.
+  // Named, rather than folded into the main block, so that property is one
+  // line to read -- and one line to mutate.
+  // ------------------------------------------------------------------
+  logic snap_en;
+  assign snap_en = advance;
+
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      w0_1 <= '0; tbuy_1 <= '0; tsell_1 <= '0; oq_1 <= '0; rc_1 <= '0;
+    end else if (snap_en) begin
+      w0_1    <= cfg.w0;
+      tbuy_1  <= cfg.theta_buy;
+      tsell_1 <= cfg.theta_sell;
+      oq_1    <= cfg.order_qty;
+      rc_1    <= risk_cfg_in;
+    end
+  end
+
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
       v1 <= 1'b0; v2 <= 1'b0;
       ev1 <= '0; er1 <= '0; ft1 <= '0;
       p_spread1 <= '0; p_imb1 <= '0; p_mom1 <= '0;
-      w0_1 <= '0; tbuy_1 <= '0; tsell_1 <= '0; oq_1 <= '0; rc_1 <= '0;
       m_valid <= 1'b0; m_event <= '0; m_err <= '0; m_feat <= '0;
       m_decision <= DEC_HOLD; m_score <= '0; m_order_qty <= '0;
       m_risk_cfg <= '0;
@@ -164,11 +178,6 @@ module policy_engine
       p_spread1 <= p_spread;
       p_imb1    <= p_imb;
       p_mom1    <= p_mom;
-      w0_1      <= cfg.w0;
-      tbuy_1    <= cfg.theta_buy;
-      tsell_1   <= cfg.theta_sell;
-      oq_1      <= cfg.order_qty;
-      rc_1      <= risk_cfg_in;
 
       // stage 2
       v2          <= v1;
