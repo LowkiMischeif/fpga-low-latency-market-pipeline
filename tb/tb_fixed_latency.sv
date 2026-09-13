@@ -52,7 +52,6 @@ module tb_fixed_latency;
   logic signed [SCORE_W-1:0] p_score;
   logic [QTY_W-1:0]          p_order_qty;
   decision_t          m_dec;
-  logic               cfg_boundary;
   risk_cfg_t          p_risk_cfg;
   logic [CFG_ADDR_W-1:0] cfg_addr;
   logic [CFG_DATA_W-1:0] cfg_wdata;
@@ -100,7 +99,7 @@ module tb_fixed_latency;
     .s_valid(f_valid), .s_ready(f_ready),
     .m_event(p_event), .m_err(p_err), .m_feat(p_feat),
     .m_decision(p_decision), .m_score(p_score), .m_order_qty(p_order_qty),
-    .m_valid(p_valid), .m_ready(p_ready), .cfg_boundary(cfg_boundary),
+    .m_valid(p_valid), .m_ready(p_ready),
     .m_risk_cfg(p_risk_cfg)
   );
 
@@ -116,7 +115,6 @@ module tb_fixed_latency;
   config_regs u_cfg (
     .clk(clk), .rst_n(rst_n),
     .cfg_addr(cfg_addr), .cfg_wdata(cfg_wdata), .cfg_we(cfg_we),
-    .boundary(cfg_boundary),
     .policy_cfg(policy_cfg), .risk_cfg(risk_cfg), .commit_count(commit_count)
   );
 

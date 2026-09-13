@@ -1,9 +1,15 @@
 // Directed tests for config_regs.
 //
-// The property that matters: a parameter change becomes visible ATOMICALLY and
-// only at an event boundary. A half-applied weight set would let one decision
-// be scored with two different policies, which is both wrong and unreproducible
-// -- and it is exactly what a naive write-through register file does.
+// The property that matters here: a BATCH of writes becomes visible atomically,
+// and only when CFG_COMMIT is written. A half-applied weight set would let one
+// decision be scored with two different policies, which is both wrong and
+// unreproducible -- and it is exactly what a naive write-through register file
+// does.
+//
+// Per-EVENT atomicity (a commit landing while events are in flight) is not this
+// module's job and is not tested here: policy_engine snapshots the whole
+// configuration at accept, and tb_policy_configs proves it with the pipeline
+// full.
 module tb_config_regs;
   import market_pkg::*;
 
@@ -13,7 +19,6 @@ module tb_config_regs;
   logic [CFG_ADDR_W-1:0] cfg_addr;
   logic [CFG_DATA_W-1:0] cfg_wdata;
   logic                  cfg_we;
-  logic                  boundary;
   policy_cfg_t           policy_cfg;
   risk_cfg_t             risk_cfg;
   logic [CNT_W-1:0]      commit_count;
@@ -39,18 +44,9 @@ module tb_config_regs;
     cfg_we = 1'b0;
   endtask
 
-  task automatic pulse_boundary();
-    @(negedge clk);
-    boundary = 1'b1;
-    @(posedge clk);
-    @(negedge clk);
-    boundary = 1'b0;
-    @(posedge clk);
-    @(negedge clk);
-  endtask
 
   initial begin
-    cfg_addr = '0; cfg_wdata = '0; cfg_we = 1'b0; boundary = 1'b0;
+    cfg_addr = '0; cfg_wdata = '0; cfg_we = 1'b0;
     repeat (3) @(posedge clk);
     rst_n = 1'b1;
     @(posedge clk);
@@ -73,32 +69,32 @@ module tb_config_regs;
     check("write without commit leaves w_spread", policy_cfg.w_spread  === '0);
     check("write without commit leaves qty",      policy_cfg.order_qty === '0);
 
-    // --- an armed commit alone changes nothing until a boundary ----------
-    wr(CFG_COMMIT, 32'd1);
+    // --- writing 0 to CFG_COMMIT is not a commit --------------------------
+    wr(CFG_COMMIT, 32'd0);
     repeat (4) @(posedge clk);
     @(negedge clk);
-    check("armed commit without a boundary does nothing",
-          policy_cfg.w0 === '0);
+    check("commit with bit 0 clear does nothing", policy_cfg.w0 === '0);
     check("commit count still zero", commit_count === '0);
 
-    // --- the boundary applies everything at once -------------------------
-    pulse_boundary();
+    // --- a commit applies everything at once, on its own edge ------------
+    wr(CFG_COMMIT, 32'd1);
     check("commit applies w0",       policy_cfg.w0        === W_W'(1234));
     check("commit applies w_spread", policy_cfg.w_spread  === W_W'(4096));
     check("commit applies qty",      policy_cfg.order_qty === QTY_W'(25));
     check("commit counted",          commit_count === 32'd1);
 
-    // --- a second boundary does not re-apply -----------------------------
-    pulse_boundary();
-    check("commit does not re-arm itself", commit_count === 32'd1);
+    // --- a commit is one-shot: nothing re-applies on later cycles --------
+    repeat (4) @(posedge clk);
+    @(negedge clk);
+    check("commit does not repeat itself", commit_count === 32'd1);
 
     // --- partial writes stay invisible until the next commit -------------
     wr(CFG_W0, 32'd7777);
-    pulse_boundary();
-    check("boundary without a commit changes nothing",
+    repeat (4) @(posedge clk);
+    @(negedge clk);
+    check("write after a commit stays in the shadow",
           policy_cfg.w0 === W_W'(1234));
     wr(CFG_COMMIT, 32'd1);
-    pulse_boundary();
     check("second commit applies", policy_cfg.w0 === W_W'(7777));
     check("commit count 2",        commit_count === 32'd2);
 
@@ -110,7 +106,6 @@ module tb_config_regs;
     check("none of the four are visible yet",
           policy_cfg.w0 === W_W'(7777) && policy_cfg.w_imbalance === '0);
     wr(CFG_COMMIT, 32'd1);
-    pulse_boundary();
     check("all four appear together",
           policy_cfg.w0          === W_W'(11) &&
           policy_cfg.w_spread    === W_W'(22) &&
@@ -124,7 +119,6 @@ module tb_config_regs;
     wr(CFG_MAX_SPREAD,    32'd800);
     wr(CFG_KILL,          32'd0);
     wr(CFG_COMMIT,        32'd1);
-    pulse_boundary();
     check("max_long",      risk_cfg.max_long      === (POS_W-1)'(500));
     check("max_short",     risk_cfg.max_short     === (POS_W-1)'(600));
     check("max_order_qty", risk_cfg.max_order_qty === QTY_W'(70));
@@ -135,20 +129,17 @@ module tb_config_regs;
     wr(CFG_W0,         32'hFFFF_F000);          // -4096
     wr(CFG_THETA_SELL, 32'hFFFF_FF00);          // -256
     wr(CFG_COMMIT, 32'd1);
-    pulse_boundary();
     check("negative w0 survives",         policy_cfg.w0 === -W_W'(4096));
     check("negative theta_sell survives", policy_cfg.theta_sell === -SCORE_W'(256));
 
     // --- an unmapped address is ignored, not aliased ----------------------
     wr(cfg_addr_e'(5'd31), 32'hDEAD_BEEF);
     wr(CFG_COMMIT, 32'd1);
-    pulse_boundary();
     check("unmapped write did not corrupt w0", policy_cfg.w0 === -W_W'(4096));
 
     // --- the kill switch can be re-armed ----------------------------------
     wr(CFG_KILL, 32'd1);
     wr(CFG_COMMIT, 32'd1);
-    pulse_boundary();
     check("kill re-armed", risk_cfg.kill === 1'b1);
 
     if (errors != 0) $fatal(1, "FAIL: %0d checks failed", errors);

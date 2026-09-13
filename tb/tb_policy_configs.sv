@@ -42,7 +42,6 @@ module tb_policy_configs;
   logic [CNT_W-1:0]   gap_count, stale_count, missed_total, bad_event_count;
   logic [CNT_W-1:0]   resync_count, commit_count;
 
-  logic                  cfg_boundary;
   risk_cfg_t             p_risk_cfg;
   logic [CFG_ADDR_W-1:0] cfg_addr;
   logic [CFG_DATA_W-1:0] cfg_wdata;
@@ -82,7 +81,7 @@ module tb_policy_configs;
     .s_valid(f_valid), .s_ready(f_ready),
     .m_event(p_event), .m_err(p_err), .m_feat(p_feat),
     .m_decision(p_decision), .m_score(p_score), .m_order_qty(p_order_qty),
-    .m_valid(p_valid), .m_ready(p_ready), .cfg_boundary(cfg_boundary),
+    .m_valid(p_valid), .m_ready(p_ready),
     .m_risk_cfg(p_risk_cfg));
 
   risk_gate u_risk (
@@ -96,7 +95,6 @@ module tb_policy_configs;
   config_regs u_cfg (
     .clk(clk), .rst_n(rst_n),
     .cfg_addr(cfg_addr), .cfg_wdata(cfg_wdata), .cfg_we(cfg_we),
-    .boundary(cfg_boundary),
     .policy_cfg(policy_cfg), .risk_cfg(risk_cfg), .commit_count(commit_count));
 
   // ------------------------------------------------------------------
@@ -167,7 +165,7 @@ module tb_policy_configs;
       cfg_we = 1'b0;
     end
     $fclose(fd);
-    // The commit is armed by the file's last line; give it a boundary.
+    // The file's last line is the commit; let the pipeline see it.
     repeat (8) @(posedge clk);
   endtask
 

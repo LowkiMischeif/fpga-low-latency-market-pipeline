@@ -3,7 +3,7 @@
 // The headline property this file protects is that the CONFIG changes the
 // decision and never the timing. Weight values steer data only; they must not
 // reach any control path. tb_policy_configs.sv proves that end to end on a
-// real trace; this file pins the arithmetic and the config-capture boundary.
+// real trace; this file pins the arithmetic and the per-event config capture.
 module tb_policy_engine;
   import market_pkg::*;
 
@@ -20,7 +20,6 @@ module tb_policy_engine;
   decision_e     m_decision;
   logic signed [SCORE_W-1:0] m_score;
   logic [QTY_W-1:0]          m_order_qty;
-  logic                      cfg_boundary;
 
   policy_engine dut (.*);
 

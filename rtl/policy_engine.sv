@@ -47,18 +47,7 @@ module policy_engine
   output logic [QTY_W-1:0]          m_order_qty,
   output risk_cfg_t     m_risk_cfg,
   output logic          m_valid,
-  input  logic          m_ready,
-
-  // Asserted when a configuration swap cannot split an event: either an event
-  // is being accepted right now, or the engine is idle.
-  //
-  // Defence in depth, not the mechanism. Atomicity actually comes from the
-  // per-event snapshot below -- weights, thresholds, order size and the risk
-  // limits are all captured into stage 1 on the accept edge, from one clock
-  // edge -- so an event is scored by one configuration generation whenever the
-  // shadow swaps. Forcing this signal high changes no output, which is why
-  // scripts/mutants.txt lists that mutation as deliberately absent.
-  output logic          cfg_boundary
+  input  logic          m_ready
 );
 
   // ------------------------------------------------------------------
@@ -82,8 +71,6 @@ module policy_engine
   logic v1, v2, advance;
   assign advance = m_ready || !v2;
   assign s_ready = advance;
-
-  assign cfg_boundary = s_ready && (s_valid || !(v1 || v2));
 
   market_event_t ev1;
   event_err_t    er1;

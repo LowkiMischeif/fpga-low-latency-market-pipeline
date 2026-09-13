@@ -18,12 +18,10 @@ Written for Tyler returning to the project. Updated 2026-09-10.
    test reruns the command in its own note — but the near-miss is worth your
    eye, because it was in the one piece of evidence this project is named for.
 
-3. **`cfg_boundary` turned out to be redundant.** Writing the mid-stream commit
-   test showed that forcing it high changes nothing: atomicity comes from the
-   per-event configuration snapshot, not from the boundary signal. I documented
-   that in the RTL, the spec and `mutants.txt` rather than leaving it looking
-   load-bearing — but if you would rather delete the signal than keep it as
-   defence in depth, that is a reasonable call and it is yours.
+3. **`cfg_boundary` is gone.** It was redundant — forcing it high changed no
+   output — because atomicity comes from the per-event configuration snapshot
+   in `policy_engine`. Removed on `fix/drop-cfg-boundary`; the snapshot is now
+   documented as the mechanism in the RTL and the spec.
 
 ## Merged on `main`
 

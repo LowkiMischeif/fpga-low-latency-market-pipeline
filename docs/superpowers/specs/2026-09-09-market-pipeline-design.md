@@ -392,10 +392,21 @@ limits through `policy_engine` rather than feeding `risk_gate` directly is what
 makes that true of the limits as well as the weights; atomic for half a
 configuration is not atomic.
 
-That snapshot is the mechanism. `config_regs`' commit boundary is defence in
-depth on top of it, and shadow-plus-commit is what makes a *batch* of register
-writes atomic — without it an event accepted between two writes would be scored
-with one new weight and three old ones.
+**That snapshot is the atomicity mechanism, and the only one.** There is no
+handshake timing the swap against events in flight. Writing `CFG_COMMIT` copies
+the shadow configuration into the active one on that clock edge, and whichever
+configuration is active on the edge an event is accepted is the one that scores
+and gates it, start to finish. A commit landing mid-flight changes only what
+later events see.
+
+`config_regs` has one separate job: shadow-plus-commit makes a *batch* of
+register writes atomic. Without it an event accepted between two writes would be
+scored with one new weight and three old ones — a configuration nobody tuned.
+
+An earlier version also routed a "safe to swap" signal from `policy_engine` back
+to `config_regs`. Forcing it permanently high changed no output, because the
+snapshot had already made it redundant, so it was deleted rather than kept as
+decoration that looked load-bearing.
 
 `tb/tb_policy_configs.sv` proves it: a third pass commits the second
 configuration mid-stream with the pipeline never drained, and requires every
