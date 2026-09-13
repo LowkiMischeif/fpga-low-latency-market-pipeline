@@ -42,8 +42,25 @@ def imbalance_dut(bid_qty: int, ask_qty: int) -> int:
     num = bid_qty - ask_qty
     sh = norm_shift(den)
     idx = ((den << sh) >> 8) & 0xFF
-    shifted = (num * recip_rom(idx)) >> (16 - sh)   # >>> floors, as in RTL
+    # The RTL normalises the numerator in stage 1 and shifts by a constant in
+    # stage 2; (num * r) >> (16 - sh) is the same integer for 0 <= sh <= 16.
+    shifted = ((num << sh) * recip_rom(idx)) >> 16   # >>> floors, as in RTL
     return max(-IMB_ONE, min(IMB_ONE, shifted))
+
+
+def test_constant_shift_form_equals_variable_shift_form():
+    """The stage-2 restructuring in feature_engine.sv is exact, not approximate.
+
+    This checks the arithmetic identity only. Python integers never overflow,
+    so it cannot see an RTL width or sign-extension mistake; the feature_engine
+    testbenches and the `feat:` mutants in scripts/mutants.txt are what cover
+    those.
+    """
+    for den in range(1, 2 * QTY_MAX + 1, 97):
+        sh = norm_shift(den)
+        r = recip_rom(((den << sh) >> 8) & 0xFF)
+        for num in (-den, -den // 2, -1, 0, 1, den // 3, den):
+            assert ((num << sh) * r) >> 16 == (num * r) >> (16 - sh)
 
 
 def imbalance_exact(bid_qty: int, ask_qty: int) -> int:
