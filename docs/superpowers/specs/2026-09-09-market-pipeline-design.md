@@ -413,11 +413,12 @@ decoration that looked load-bearing.
 field — all four weights with non-zero features, both thresholds, order size,
 every risk limit and the kill switch — one cycle after accept, between two
 back-to-back accepts, and during a stall that holds an event *in* the snapshot
-stage with the next one ahead of it in the output register. Each event's outputs
-must reflect the configuration it was accepted under. Seven mutants aimed at
-that test make the snapshot leak: stage 2 reading any live field, the snapshot
-reloading on stalled edges, or the multiplies retimed into stage 2. `tb/tb_policy_configs.sv` adds the end-to-end view — a
-commit mid-stream with the pipeline never drained — but on its own it cannot
+stage with the previous one waiting in the output register. Each event's
+outputs must reflect the configuration it was accepted under. Seven mutants
+aimed at that test make the snapshot leak: stage 2 reading any live field, the
+snapshot reloading on stalled edges, or the multiplies retimed into stage 2.
+`tb/tb_policy_configs.sv` adds the end-to-end view — a commit mid-stream with
+the pipeline never drained — but on its own it cannot
 prove the snapshot: the two committed configurations share their risk limits
 and order size, and it accepts an event on every edge.
 

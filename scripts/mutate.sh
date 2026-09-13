@@ -17,7 +17,8 @@ cd "$(dirname "$0")/.."
 FILTER="${1:-}"
 PASS=0; FAIL=0
 BACKUP=$(mktemp -d)
-trap 'cp -f "$BACKUP"/*.sv rtl/ 2>/dev/null; rm -rf "$BACKUP"' EXIT
+LOG=$(mktemp)
+trap 'cp -f "$BACKUP"/*.sv rtl/ 2>/dev/null; rm -rf "$BACKUP" "$LOG"' EXIT
 cp rtl/*.sv "$BACKUP"/
 
 # Mutants live in scripts/mutants.txt, one per line:
@@ -41,15 +42,17 @@ PY
   # A kill needs evidence the simulation RAN and failed. A mutant whose
   # replacement text does not compile also makes `make sim` fail, and scoring
   # that as a kill would count a typo in mutants.txt as a test catching a bug.
-  local log; log=$(mktemp)
-  if make sim TOP="$tb" > "$log" 2>&1; then
+  # run_sim.tcl exits before xsim on a compile or elaboration error, so
+  # "SIMULATION FAILED" can only come from a simulation that started. It is not
+  # narrowed to a FAIL: line on purpose: a mutant that fires an assertion on
+  # every edge can hit the log-size cap, and that is a genuine catch.
+  if make sim TOP="$tb" > "$LOG" 2>&1; then
     printf '%-52s SURVIVED\n' "$name"; FAIL=$((FAIL+1))
-  elif grep -qE "SIMULATION FAILED|no PASS: marker" "$log"; then
+  elif grep -q "SIMULATION FAILED" "$LOG"; then
     printf '%-52s killed\n' "$name"; PASS=$((PASS+1))
   else
     printf '%-52s DOES NOT BUILD\n' "$name"; FAIL=$((FAIL+1))
   fi
-  rm -f "$log"
   cp -f "$BACKUP/$(basename "$file")" "$file"
 }
 
