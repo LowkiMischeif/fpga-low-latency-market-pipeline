@@ -34,6 +34,20 @@ module feature_engine
   // -------------------------------------------------------------------
   // Stage 1 combinational
   // -------------------------------------------------------------------
+  // ------------------------------------------------------------------
+  // The one gating rule, applied to every feature without exception:
+  //
+  //     book_empty == 1  =>  spread, mid, imbalance and momentum are all 0
+  //
+  // Previously spread and mid were gated on both_sides while imbalance and
+  // momentum were gated on book_empty, which differ when two valid sides both
+  // rest zero size: book_empty read 1 while spread and mid carried real
+  // values. A consumer reading book_empty as "nothing here" would discard a
+  // real mid; one reading mid as authoritative would get a mid whose momentum
+  // had been suppressed. top_of_book's qty == 0 rule now makes that state
+  // unreachable, but two rules that agree only by accident are still two
+  // rules. There is one, and every feature obeys it.
+  // ------------------------------------------------------------------
   logic both_sides;
   assign both_sides = s_book.bid_valid && s_book.ask_valid;
 
@@ -48,12 +62,12 @@ module feature_engine
 
   logic signed [SPREAD_W-1:0] spread1;
   logic        [PRICE_W-1:0]  mid1;
-  assign spread1 = both_sides
-                 ? ($signed({1'b0, s_book.ask_price}) - $signed({1'b0, s_book.bid_price}))
-                 : '0;
-  assign mid1 = both_sides
-              ? PRICE_W'(({1'b0, s_book.bid_price} + {1'b0, s_book.ask_price}) >> 1)
-              : '0;
+  assign spread1 = empty1
+                 ? '0
+                 : ($signed({1'b0, s_book.ask_price}) - $signed({1'b0, s_book.bid_price}));
+  assign mid1 = empty1
+              ? '0
+              : PRICE_W'(({1'b0, s_book.bid_price} + {1'b0, s_book.ask_price}) >> 1);
 
   logic signed [DEN_W-1:0] num1;
   assign num1 = $signed({1'b0, s_book.bid_qty}) - $signed({1'b0, s_book.ask_qty});

@@ -246,3 +246,90 @@ def test_start_seq_is_honoured():
     assert evs[0]["seq"] == 60000
     evs = generate(n=5, seed=31, start_seq=SEQ_MOD_16 + 7)
     assert evs[0]["seq"] == 7, "start_seq must be taken modulo 2**16"
+
+
+# ---------------------------------------------------------------------------
+# Coverage floors on the generated stimulus.
+#
+# These exist because the generator used to draw price uniformly over the full
+# 16-bit range. The best bid then converged on the largest price ever drawn and
+# nothing matched it again, so a generated trace exercised only "ADD better"
+# and "ADD worse" -- cancel-at-best, trade-at-best, trade-to-zero and
+# equal-price accumulation were unreachable no matter how long it ran. A
+# generator that cannot reach a row of the book's update table is not stimulus
+# for that row, and nothing said so.
+# ---------------------------------------------------------------------------
+from generate_events import apply_to_book, _empty_book, N_SYMBOLS  # noqa: E402
+
+
+def _book_coverage(events):
+    """Replay a trace through the book model, counting which rules fired.
+
+    The rule name comes from apply_to_book itself, so this cannot silently
+    disagree with the model it is measuring.
+    """
+    books = [_empty_book() for _ in range(N_SYMBOLS)]
+    cov, both = {}, 0
+    for e in events:
+        if e["bad_type"] or e["bad_side"] or e["bad_rsv"] or e["gap"] or e["stale"]:
+            continue
+        bk = books[e["symbol"]]
+        rule = apply_to_book(bk, e["etype"], e["side"], e["price"], e["qty"])
+        cov[rule] = cov.get(rule, 0) + 1
+        if bk["bid_valid"] and bk["ask_valid"]:
+            both += 1
+    cov["both_sides"] = both
+    return cov
+
+
+def test_generated_trace_reaches_every_book_update_rule():
+    evs = generate(n=2000, seed=1, gap_rate=0.05, stale_rate=0.03,
+                   bad_type_rate=0.02, bad_side_rate=0.02, bad_rsv_rate=0.01)
+    cov = _book_coverage(evs)
+    # Set at 75% of the minimum observed over 12 seeds, not an order of
+    # magnitude under it: a floor 30x below reality only trips on total
+    # collapse, which is a smoke test wearing a floor's name.
+    floors = {"add_replace": 266, "add_accum": 36, "add_worse": 70,
+              "add_qty0": 15, "add_sat": 5, "cancel_hit": 123,
+              "trade_hit": 49, "trade_to_zero": 19, "trade_floor": 43,
+              "both_sides": 248}
+    for name, need in floors.items():
+        assert cov[name] >= need, f"{name} = {cov[name]}, need >= {need}: {cov}"
+
+
+def test_book_coverage_holds_across_seeds():
+    """Every floor, on every seed -- not a subset checked for > 0."""
+    floors = {"add_replace": 266, "add_accum": 36, "add_worse": 70,
+              "add_qty0": 15, "add_sat": 5, "cancel_hit": 123,
+              "trade_hit": 49, "trade_to_zero": 19, "trade_floor": 43,
+              "both_sides": 248}
+    for seed in (2, 7, 42, 99, 4242, 12345, 31337):
+        cov = _book_coverage(generate(
+            n=2000, seed=seed, gap_rate=0.05, stale_rate=0.03,
+            bad_type_rate=0.02, bad_side_rate=0.02, bad_rsv_rate=0.01))
+        for name, need in floors.items():
+            assert cov.get(name, 0) >= need, \
+                f"seed {seed}: {name} = {cov.get(name, 0)}, need >= {need}"
+
+
+def test_uniform_prices_barely_reach_the_book():
+    """Why the price ladder exists, measured on the real generator.
+
+    The earlier version of this test never called generate() -- it was a
+    standalone RNG loop, so reverting the ladder would not have failed it. It
+    also asserted zero hits, which is not true in general: a uniform 16-bit
+    price collides with the resting level about once per 65536 events, so over
+    a few thousand it is usually zero and occasionally one. The honest claim is
+    that the rate is three orders of magnitude too low to be stimulus.
+    """
+    total_hits = 0
+    for seed in (1, 2, 3, 4, 5):
+        cov = _book_coverage(generate(
+            n=2000, seed=seed, gap_rate=0.05, stale_rate=0.03,
+            bad_type_rate=0.02, bad_side_rate=0.02, bad_rsv_rate=0.01,
+            uniform_prices=True))
+        total_hits += cov.get("cancel_hit", 0) + cov.get("trade_hit", 0) \
+            + cov.get("trade_to_zero", 0) + cov.get("add_accum", 0)
+    assert total_hits < 5, (
+        f"uniform prices reached the book {total_hits} times over 10000 "
+        "events; the ladder may no longer be doing anything")

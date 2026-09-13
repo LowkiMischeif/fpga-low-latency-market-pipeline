@@ -240,7 +240,14 @@ module tb_feature_engine;
 
     // --- both sides valid but zero size: divide-by-zero must not X -----
     feed(4'h0, 1'b1, 16'd1000, 16'd0, 1'b1, 16'd1010, 16'd0);
+    // The state where the two old gating rules disagreed: both sides valid,
+    // both resting zero size. book_empty said "nothing here" while spread and
+    // mid carried real values computed from the two prices. One rule now, so
+    // every feature is zero whenever book_empty is set.
     check("zero total size -> empty", last_feat.book_empty === 1'b1);
+    check("zero total size -> spread 0", last_feat.spread   === '0);
+    check("zero total size -> mid 0",    last_feat.mid      === '0);
+    check("zero total size -> momentum 0", last_feat.momentum === '0);
     check("zero total size -> imb 0", last_feat.imbalance === '0);
     check("zero total size -> imb not X", !$isunknown(last_feat.imbalance));
 

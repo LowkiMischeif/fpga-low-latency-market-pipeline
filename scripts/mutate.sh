@@ -60,6 +60,13 @@ run_mutant "feat: mid not halved" rtl/feature_engine.sv tb_feature_engine \
   's_book.ask_price}) >> 1)' 's_book.ask_price}))'
 run_mutant "feat: divide-by-zero not folded into empty" rtl/feature_engine.sv tb_feature_engine \
   "assign empty1 = !both_sides || (den == '0);" 'assign empty1 = !both_sides;'
+# The gating rule this branch unified. tb_feature_engine kills it; the
+# integrated testbench does not, because top_of_book's qty == 0 rule makes the
+# divergent state unreachable through the real pipeline.
+run_mutant "feat: spread/mid back on split gating" rtl/feature_engine.sv tb_feature_engine \
+  '  assign spread1 = empty1' '  assign spread1 = !both_sides'
+run_mutant "feat: mid back on split gating" rtl/feature_engine.sv tb_feature_engine \
+  '  assign mid1 = empty1' '  assign mid1 = !both_sides'
 run_mutant "feat: imbalance numerator reversed" rtl/feature_engine.sv tb_feature_engine \
   "s_book.bid_qty}) - \$signed({1'b0, s_book.ask_qty})" "s_book.ask_qty}) - \$signed({1'b0, s_book.bid_qty})"
 run_mutant "feat: wrong reciprocal shift" rtl/feature_engine.sv tb_feature_engine \

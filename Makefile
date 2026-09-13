@@ -88,7 +88,10 @@ sim-all: trace
 	  echo "== sim $$t"; \
 	  $(MAKE) --no-print-directory sim TOP=$$t || exit 1; \
 	done
-	@echo "== sim-all passed: $(TB_TOPS)"
+	@echo "== replay the generated trace through book + features"
+	@$(MAKE) --no-print-directory sim TOP=tb_book_features \
+	    PLUSARGS="HEX=$(TRACEOUT).hex NEVENTS=$(NEVENTS)" || exit 1
+	@echo "== sim-all passed: $(TB_TOPS) (+ generated-trace replay)"
 
 build:
 	$(VIVADO) -mode batch -notrace -source scripts/build.tcl -tclargs $(SYNTH_TOP)

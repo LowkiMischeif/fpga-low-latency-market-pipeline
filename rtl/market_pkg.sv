@@ -164,11 +164,15 @@ package market_pkg;
   localparam int IMB_W      = IMB_FRAC_W + 2;
   localparam int IMB_ONE    = 1 <<< IMB_FRAC_W;
 
-  // ponytail: momentum is the change in midprice since that symbol's previous
-  // book update -- one step, held per symbol. Deeper history means a
-  // MOMENTUM_LAG-deep shift register per symbol; add it if the policy engine
-  // turns out to need a longer horizon.
-  localparam int MOMENTUM_LAG = 1;
+  // Momentum is the change in midprice since that symbol's previous book
+  // update: one step, one register per symbol.
+  //
+  // There was a MOMENTUM_LAG constant here. It was referenced nowhere in rtl/
+  // or tb/, so changing it silently did nothing -- a knob that is not wired to
+  // anything is worse than no knob, because the next person will turn it. If
+  // the policy engine turns out to need a longer horizon, that is a
+  // MOMENTUM_LAG-deep shift register per symbol and it can be added then, with
+  // a test that proves the depth matters.
 
   typedef struct packed {
     logic signed [SPREAD_W-1:0] spread;
