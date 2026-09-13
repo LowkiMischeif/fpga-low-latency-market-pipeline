@@ -43,3 +43,11 @@ def test_cfg_mem_ends_with_commit_and_has_one_word_per_register():
         got = (MEM / f"rom_cfg_{name}.mem").read_text().split()
         assert len(got) == len(A) == 13
         assert int(got[-1][:2], 16) == A["CFG_COMMIT"]
+
+
+def test_cfg_loader_word_count_matches_the_register_map():
+    """cfg_loader.sv hardcodes N_CFG; it must equal the register count."""
+    import re
+    src = (REPO / "rtl" / "cfg_loader.sv").read_text()
+    m = re.search(r"localparam int N_CFG\s*=\s*(\d+);", src)
+    assert m and int(m.group(1)) == len(A)

@@ -88,3 +88,31 @@ lat: feature_engine collapsed to one cycle @@ rtl/feature_engine.sv @@ tb_fixed_
 risk: position check wraps at POS_W @@ rtl/risk_gate.sv @@ tb_risk_gate @@ localparam int CHK_W = POS_W + 1; @@ localparam int CHK_W = POS_W;
 risk: policy HOLD still gets a reason @@ rtl/risk_gate.sv @@ tb_risk_gate @@ if      (s_decision == DEC_HOLD) reason_c = RSN_NONE; @@ if      (1'b0)                  reason_c = RSN_NONE;
 cfg-indep: a config bit reaches the stall path @@ rtl/policy_engine.sv @@ tb_policy_configs @@ assign advance = m_ready || !v2; @@ assign advance = (m_ready || !v2) && !(cfg.w_spread[10] && v2);
+
+== reset_sync ==
+rst: release through one flop @@ rtl/reset_sync.sv @@ tb_reset_sync @@   assign rst_n = stage2; @@   assign rst_n = stage1;
+rst: synchronous assert @@ rtl/reset_sync.sv @@ tb_reset_sync @@   always_ff @(posedge clk or posedge arst_in) begin @@   always_ff @(posedge clk) begin
+
+== replay_ctrl ==
+replay: address does not run ahead @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@   assign rom_addr = (accept && !last) ? (idx + 1'b1) : idx; @@   assign rom_addr = idx;
+replay: press accepted mid-replay @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@ (lockout == '0) && !busy && !hold_off; @@ (lockout == '0) && !hold_off;
+replay: lockout ignored @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@ assign press  = b2 && !b_prev && (lockout == '0) && !busy && !hold_off; @@ assign press  = b2 && !b_prev && !busy && !hold_off;
+replay: hold_off ignored @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@ && !busy && !hold_off; @@ && !busy;
+replay: last word dropped @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@   assign last   = (idx == AW'(N_TRACE - 1)); @@   assign last   = (idx == AW'(N_TRACE - 2));
+replay: stale ROM word presented before priming @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@   assign s_valid  = busy && primed; @@   assign s_valid  = busy;
+
+== cfg_loader ==
+cfgl: switch change does not reload @@ rtl/cfg_loader.sv @@ tb_cfg_loader @@ if (!loaded || (s2 != preset)) begin @@ if (!loaded) begin
+cfgl: presets swapped @@ rtl/cfg_loader.sv @@ tb_cfg_loader @@ assign word = preset ? rom_tuned[idx] : rom_base[idx]; @@ assign word = preset ? rom_base[idx] : rom_tuned[idx];
+cfgl: final write (the commit) skipped @@ rtl/cfg_loader.sv @@ tb_cfg_loader @@ if (idx == ($clog2(N_CFG))'(N_CFG - 1)) begin @@ if (idx == ($clog2(N_CFG))'(N_CFG - 2)) begin
+cfgl: busy drops before the last write lands @@ rtl/cfg_loader.sv @@ tb_cfg_loader @@ assign busy = loading || cfg_we; @@ assign busy = loading;
+
+== seg7_display ==
+seg7: digit 3 decodes as 8 @@ rtl/seg7_display.sv @@ tb_seg7_display @@ 4'h3: seg = 7'b0110000; @@ 4'h3: seg = 7'b0000000;
+seg7: anodes 0 and 1 swapped @@ rtl/seg7_display.sv @@ tb_seg7_display @@ 2'd0: begin an = 4'b1110; nib = value[3:0];   end @@ 2'd0: begin an = 4'b1101; nib = value[3:0];   end
+
+== market_pipeline_top ==
+top: BUY and SELL counters swapped @@ rtl/market_pipeline_top.sv @@ tb_market_pipeline_top @@ if (r_decision.decision == DEC_BUY)  buy_cnt  <= buy_cnt  + 1'b1; @@ if (r_decision.decision == DEC_SELL) buy_cnt  <= buy_cnt  + 1'b1;
+top: replay not held off while config loads @@ rtl/market_pipeline_top.sv @@ tb_market_pipeline_top @@ .btn(btnC), .hold_off(cfg_busy), @@ .btn(btnC), .hold_off(1'b0),
+top: counters not cleared on a new replay @@ rtl/market_pipeline_top.sv @@ tb_market_pipeline_top @@ end else if (start_pulse) begin @@ end else if (1'b0) begin
+top: preset switch not wired @@ rtl/market_pipeline_top.sv @@ tb_market_pipeline_top @@ .sw_preset(sw[0]), @@ .sw_preset(1'b0),
