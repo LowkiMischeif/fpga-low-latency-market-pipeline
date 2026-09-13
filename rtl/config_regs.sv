@@ -14,13 +14,16 @@
 // It does NOT try to time the swap relative to events in flight, and does not
 // need to. Per-event atomicity comes from policy_engine, which captures the
 // weights, thresholds, order size and the risk limits into its stage-1
-// registers on the accept edge. An event is therefore scored and gated by
-// whichever configuration was active on the edge it entered, and a commit
-// landing mid-flight only changes what later events see. An earlier version
+// registers on the edge it ACCEPTS an event. An event is scored and gated by
+// whichever configuration was active on that edge -- not when the event entered
+// the pipeline, which is several stages earlier -- so a commit changes what
+// every event not yet accepted by policy_engine sees, including events already
+// inside decoder..feature_engine, and nothing that has already been accepted. An earlier version
 // routed a "safe to swap" handshake back from policy_engine; forcing it high
 // changed no output, because the snapshot had already made it redundant, so it
-// was removed. tb_policy_configs proves the property with a commit landing
-// while the pipeline is full.
+// was removed. tb_policy_engine's snapshot test is what pins the property: it
+// changes every configuration field one cycle after accept, during a stall, and
+// between two back-to-back accepts.
 //
 // Reset leaves the design SAFE rather than merely defined: zero weights, zero
 // order size, and the kill switch ON. A design that comes out of reset able to
@@ -68,9 +71,10 @@ module config_regs
           CFG_MAX_ORDER_QTY: sh_risk.max_order_qty <= QTY_W'(cfg_wdata);
           CFG_MAX_SPREAD:    sh_risk.max_spread    <= SPREAD_W'(cfg_wdata);
           CFG_KILL:          sh_risk.kill          <= cfg_wdata[0];
-          // The swap. Everything at once, or nothing. Only one register is
-          // written per cycle, so no shadow field can change on the commit
-          // edge itself -- the batch is exactly the writes that preceded it.
+          // The swap. Everything at once, or nothing. The port writes one
+          // register per cycle, so no shadow field can change on the commit
+          // edge itself. The batch is the whole shadow copy as it stands --
+          // every write since reset, not only those since the last commit.
           CFG_COMMIT: if (cfg_wdata[0]) begin
             policy_cfg   <= sh_policy;
             risk_cfg     <= sh_risk;

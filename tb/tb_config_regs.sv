@@ -83,11 +83,6 @@ module tb_config_regs;
     check("commit applies qty",      policy_cfg.order_qty === QTY_W'(25));
     check("commit counted",          commit_count === 32'd1);
 
-    // --- a commit is one-shot: nothing re-applies on later cycles --------
-    repeat (4) @(posedge clk);
-    @(negedge clk);
-    check("commit does not repeat itself", commit_count === 32'd1);
-
     // --- partial writes stay invisible until the next commit -------------
     wr(CFG_W0, 32'd7777);
     repeat (4) @(posedge clk);

@@ -38,6 +38,17 @@ pol: empty book still decides @@ rtl/policy_engine.sv @@ tb_policy_engine @@ if 
 # achievable range instead, and fails if it ever grows past a tenth of the
 # rail, which is when this mutant would become killable and belong here.
 
+# Snapshot bypass: stage 2 reads the LIVE config instead of the value captured
+# on the accept edge. These are the mutants a previous review showed the
+# end-to-end config test cannot kill -- the committed configs share risk limits
+# and order size, and its mid-stream pass accepts on every edge -- so they are
+# aimed at the directed snapshot test in tb_policy_engine instead.
+pol-snap: w0 read live @@ rtl/policy_engine.sv @@ tb_policy_engine @@ assign score2 = score_sat_add(scaled_sat2, SCORE_W'(w0_1)); @@ assign score2 = score_sat_add(scaled_sat2, SCORE_W'(cfg.w0));
+pol-snap: theta_buy read live @@ rtl/policy_engine.sv @@ tb_policy_engine @@ else if (score2 >  tbuy_1)       dec2 = DEC_BUY; @@ else if (score2 >  cfg.theta_buy) dec2 = DEC_BUY;
+pol-snap: theta_sell read live @@ rtl/policy_engine.sv @@ tb_policy_engine @@ else if (score2 <  tsell_1)      dec2 = DEC_SELL; @@ else if (score2 <  cfg.theta_sell) dec2 = DEC_SELL;
+pol-snap: order_qty read live @@ rtl/policy_engine.sv @@ tb_policy_engine @@       m_order_qty <= oq_1; @@       m_order_qty <= cfg.order_qty;
+pol-snap: risk limits read live @@ rtl/policy_engine.sv @@ tb_policy_engine @@       m_risk_cfg  <= rc_1; @@       m_risk_cfg  <= risk_cfg_in;
+
 == risk_gate ==
 # NOT LISTED: "risk: spread guard not qualified by book_empty".
 # The qualification is real and spec 5.6 requires it, but it is currently

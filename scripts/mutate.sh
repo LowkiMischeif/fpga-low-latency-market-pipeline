@@ -49,6 +49,28 @@ PY
 MUTANTS="$(dirname "$0")/mutants.txt"
 [ -f "$MUTANTS" ] || { echo "missing $MUTANTS"; exit 1; }
 
+# Baseline: every testbench a selected mutant will be scored against must PASS
+# unmutated, before any mutation is applied.
+#
+# A mutant counts as killed when `make sim` fails, and `make sim` fails for any
+# reason -- including a testbench that does not even elaborate. Without this
+# check, a broken testbench turns every mutant aimed at it into a "kill". That
+# happened: tb_policy_engine stopped elaborating (xsim rejects nonblocking
+# writes to associative arrays) and the suite still reported every one of its
+# mutants killed, including five written specifically to be hard to kill.
+echo "== baseline: unmutated testbenches must pass"
+for tb in $(grep -v '^#' "$MUTANTS" | grep ' @@ ' \
+            | awk -F' @@ ' -v f="$FILTER" 'f == "" || index($1, f) { print $3 }' \
+            | sort -u); do
+  if make sim TOP="$tb" >/dev/null 2>&1; then
+    printf '   %-30s pass\n' "$tb"
+  else
+    printf '   %-30s FAILS UNMUTATED\n' "$tb"
+    echo "ABORT: $tb does not pass without a mutation, so no kill against it would mean anything."
+    exit 2
+  fi
+done
+
 section=""
 while IFS= read -r line; do
   case "$line" in

@@ -1,6 +1,6 @@
 # Status
 
-Written for Tyler returning to the project. Updated 2026-09-10.
+Written for Tyler returning to the project. Updated 2026-09-13.
 
 ## The three things to look at first
 
@@ -18,10 +18,16 @@ Written for Tyler returning to the project. Updated 2026-09-10.
    test reruns the command in its own note — but the near-miss is worth your
    eye, because it was in the one piece of evidence this project is named for.
 
-3. **`cfg_boundary` is gone.** It was redundant — forcing it high changed no
-   output — because atomicity comes from the per-event configuration snapshot
-   in `policy_engine`. Removed on `fix/drop-cfg-boundary`; the snapshot is now
-   documented as the mechanism in the RTL and the spec.
+3. **`cfg_boundary` is gone, and the mutation harness had a hole.** The
+   deletion is on `fix/drop-cfg-boundary`. Its review found the snapshot claim
+   was asserted but not actually pinned — 9 of 10 "read the live config"
+   mutants survived — so `tb_policy_engine` now tests it directly. Fixing that
+   exposed a worse problem: `mutate.sh` scored a testbench that did not even
+   elaborate as a kill for every mutant aimed at it. It now runs each
+   testbench unmutated first and aborts if any fails.
+
+**Merge order: #6, then #7, then the `cfg_boundary` PR.** As of 2026-09-13
+none of the three is merged; `main` is still at `ff6350d`.
 
 ## Merged on `main`
 
@@ -50,7 +56,7 @@ Skeptic-reviewed: 1 BLOCKER and 5 MAJOR found, all fixed.
 | `make lint` / `make lint-tb` | clean / clean (12 testbenches) |
 | `pytest` | 50 passed |
 | `make sim-all` | 12/12 plus generated-trace replay |
-| `./scripts/mutate.sh` | **41 mutants, 41 killed** |
+| `./scripts/mutate.sh` | **47 mutants, 47 killed** |
 | Latency | min = mean = max = **8 cycles** over 2000 events |
 | Two configs | 839 vs 1485 trades, 1188/2000 decisions differ, histograms identical |
 | Mid-stream commit | 1371 under A, 1441 under B, **0 split** |

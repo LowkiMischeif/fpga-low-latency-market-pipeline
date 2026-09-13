@@ -36,6 +36,35 @@ module tb_policy_engine;
       last_qty   <= m_order_qty;
     end
 
+  // Outputs recorded per sequence number. last_* only holds the most recent
+  // handoff, which cannot check two events that were in flight together.
+  decision_e                 mon_dec   [int];
+  logic signed [SCORE_W-1:0] mon_score [int];
+  logic [QTY_W-1:0]          mon_qty   [int];
+  risk_cfg_t                 mon_risk  [int];
+  // Blocking assignment on purpose: xsim does not support nonblocking
+  // assignment to associative arrays ("not supported yet for simulation"), and
+  // these arrays are read only from the initial block, at negedges, so there is
+  // no same-edge race for a blocking write to create.
+  always @(posedge clk)
+    if (rst_n && m_valid && m_ready) begin
+      mon_dec[int'(m_event.seq)]   = m_decision;
+      mon_score[int'(m_event.seq)] = m_score;
+      mon_qty[int'(m_event.seq)]   = m_order_qty;
+      mon_risk[int'(m_event.seq)]  = m_risk_cfg;
+    end
+
+  task automatic wait_out(int seq);
+    int guard;
+    guard = 0;
+    @(negedge clk);
+    while (mon_dec.exists(seq) == 0) begin
+      @(negedge clk);
+      guard++;
+      if (guard > 100) $fatal(1, "FAIL: event seq %0d never left policy_engine", seq);
+    end
+  endtask
+
   task automatic check(string name, logic cond);
     if (!cond) begin
       errors++;
@@ -184,6 +213,142 @@ module tb_policy_engine;
     feed(65535, 0, 16384, 65535);
     check("extreme negative score is well inside the rail",
           last_score < 0 && last_score > -(SCORE_W'(1) <<< (SCORE_W-4)));
+
+    // --- the per-event configuration snapshot ----------------------------
+    //
+    // The atomicity claim for the whole config path rests here: policy_engine
+    // captures EVERY config-derived value an event uses -- w0, both
+    // thresholds, order_qty and the risk limits -- on the edge it accepts the
+    // event, and nothing downstream reads the live config. A previous review
+    // showed the end-to-end test could not see this: the two committed configs
+    // share identical risk limits and order size, and its mid-stream pass
+    // holds s_valid high so every edge accepts. Nine of ten "read the live
+    // config in stage 2" mutants survived it.
+    //
+    // So change every field -- all of them different, kill switch included --
+    // at the three timings that matter, and require the outputs to still
+    // reflect the configuration the event was accepted under.
+    begin
+      policy_cfg_t cx, cy, cz;
+      risk_cfg_t   rx, ry, rz;
+      int          e1, e2;
+      // Every decision-relevant field differs between X and Y, so reading any
+      // one of them live flips an observable output.
+      cx = mk_cfg( 150, 0, 0, 0,  100, -100,  7);   // score 150 -> BUY
+      cy = mk_cfg(-150, 0, 0, 0,  200,  -50,  9);   // score -150 -> SELL
+      cz = mk_cfg(  20, 0, 0, 0,   10,  -10, 11);   // score 20 -> BUY, qty 11
+      rx = '0; rx.max_long = 123; rx.max_short = 456; rx.max_order_qty = 77;
+      rx.max_spread = 321; rx.kill = 1'b0;
+      ry = '0; ry.max_long = 999; ry.max_short = 888; ry.max_order_qty = 66;
+      ry.max_spread = 555; ry.kill = 1'b1;
+      rz = ry; rz.max_spread = 42;
+
+      // (a) every field changes on the cycle after accept, no stall.
+      @(negedge clk); while (!s_ready) @(negedge clk);
+      cfg = cx; risk_cfg_in = rx;
+      e1 = feed_seq; feed_seq++;
+      s_event = '0; s_event.seq = SEQ_W'(e1); s_err = '0; s_feat = '0;
+      s_valid = 1'b1;
+      @(posedge clk);                          // accepted under X
+      @(negedge clk);
+      s_valid = 1'b0;
+      cfg = cy; risk_cfg_in = ry;              // everything changes now
+      wait_out(e1);
+      check("snap(a) decision from X",  mon_dec[e1]   === DEC_BUY);
+      check("snap(a) score from X",     mon_score[e1] === SCORE_W'(150));
+      check("snap(a) order_qty from X", mon_qty[e1]   === QTY_W'(7));
+      check("snap(a) risk limits from X", mon_risk[e1] === rx);
+
+      // (b) the event is held by a stall while the config changes twice.
+      @(negedge clk);
+      m_ready = 1'b0;
+      cfg = cx; risk_cfg_in = rx;
+      e1 = feed_seq; feed_seq++;
+      s_event = '0; s_event.seq = SEQ_W'(e1); s_err = '0; s_feat = '0;
+      s_valid = 1'b1;
+      @(posedge clk);                          // accepted (pipe was empty)
+      @(negedge clk);
+      s_valid = 1'b0;
+      cfg = cy; risk_cfg_in = ry;
+      repeat (4) @(negedge clk);               // now parked in stage 2
+      cfg = cz; risk_cfg_in = rz;
+      repeat (3) @(negedge clk);
+      m_ready = 1'b1;
+      wait_out(e1);
+      check("snap(b) decision from X after stall",  mon_dec[e1]   === DEC_BUY);
+      check("snap(b) score from X after stall",     mon_score[e1] === SCORE_W'(150));
+      check("snap(b) order_qty from X after stall", mon_qty[e1]   === QTY_W'(7));
+      check("snap(b) risk limits from X after stall", mon_risk[e1] === rx);
+
+      // (c) back to back: the config changes BETWEEN two accepts, so the
+      // first event must come out under X and the second under Y.
+      @(negedge clk);
+      cfg = cx; risk_cfg_in = rx;
+      e1 = feed_seq; feed_seq++;
+      e2 = feed_seq; feed_seq++;
+      s_event = '0; s_event.seq = SEQ_W'(e1); s_err = '0; s_feat = '0;
+      s_valid = 1'b1;
+      @(posedge clk);                          // e1 accepted under X
+      @(negedge clk);
+      cfg = cy; risk_cfg_in = ry;
+      s_event.seq = SEQ_W'(e2);                // s_valid stays high
+      @(posedge clk);                          // e2 accepted under Y
+      @(negedge clk);
+      s_valid = 1'b0;
+      wait_out(e1);
+      wait_out(e2);
+      check("snap(c) first event decision from X",  mon_dec[e1]  === DEC_BUY);
+      check("snap(c) first event qty from X",       mon_qty[e1]  === QTY_W'(7));
+      check("snap(c) first event risk from X",      mon_risk[e1] === rx);
+      check("snap(c) second event decision from Y", mon_dec[e2]  === DEC_SELL);
+      check("snap(c) second event score from Y",    mon_score[e2] === -SCORE_W'(150));
+      check("snap(c) second event qty from Y",      mon_qty[e2]  === QTY_W'(9));
+      check("snap(c) second event risk from Y",     mon_risk[e2] === ry);
+      // (d) theta_sell must be the DECIDING comparison. In (a)-(c) every
+      // X-accepted event scores high enough that the BUY test wins first, so
+      // theta_sell is never consulted when the live and captured values
+      // differ -- the "theta_sell read live" mutant survived exactly that.
+      // Score -150 under theta_sell = -100 is a SELL; the live value moves to
+      // -200, under which the same score would be a HOLD.
+      begin
+        policy_cfg_t cs, cs_live;
+        cs      = mk_cfg(-150, 0, 0, 0, 100, -100, 7);  // -150 < -100 -> SELL
+        cs_live = mk_cfg(-150, 0, 0, 0, 100, -200, 7);  // -150 > -200 -> HOLD
+
+        // right after accept
+        @(negedge clk);
+        cfg = cs;
+        e1 = feed_seq; feed_seq++;
+        s_event = '0; s_event.seq = SEQ_W'(e1); s_err = '0; s_feat = '0;
+        s_valid = 1'b1;
+        @(posedge clk);
+        @(negedge clk);
+        s_valid = 1'b0;
+        cfg = cs_live;
+        wait_out(e1);
+        check("snap(d) SELL decided by captured theta_sell", mon_dec[e1] === DEC_SELL);
+
+        // and while stalled in stage 2
+        @(negedge clk);
+        m_ready = 1'b0;
+        cfg = cs;
+        e1 = feed_seq; feed_seq++;
+        s_event = '0; s_event.seq = SEQ_W'(e1); s_err = '0; s_feat = '0;
+        s_valid = 1'b1;
+        @(posedge clk);
+        @(negedge clk);
+        s_valid = 1'b0;
+        cfg = cs_live;
+        repeat (5) @(negedge clk);
+        m_ready = 1'b1;
+        wait_out(e1);
+        check("snap(d) SELL survives a stall under a moved theta_sell",
+              mon_dec[e1] === DEC_SELL);
+      end
+
+      cfg = mk_cfg(0, 0, 0, 0, 1, -1, 10);
+      risk_cfg_in = '0;
+    end
 
     // --- book_empty forces HOLD regardless of weights -------------------
     // Features are all zero when the book is empty, but an aggressive w0
