@@ -41,7 +41,7 @@ module market_pipeline_top
   logic cfg_we, cfg_busy, preset;
 
   cfg_loader #(.MEM_BASE(CFG_MEM_BASE), .MEM_TUNED(CFG_MEM_TUNED))
-    u_cfgl (.clk(clk), .rst_n(rst_n), .sw_preset(sw[0]),
+    u_cfgl (.clk(clk), .rst_n(rst_n), .sw_preset(sw[0]), .hold_off(replay_busy),
             .cfg_addr(cfg_addr), .cfg_wdata(cfg_wdata), .cfg_we(cfg_we),
             .busy(cfg_busy), .preset(preset));
 

@@ -1,7 +1,7 @@
 // seg7_display.sv -- four-digit multiplexed hex display for the Basys 3.
 // Segments and anodes are active low; seg = {g,f,e,d,c,b,a}.
 module seg7_display #(
-  parameter int REFRESH_W = 17   // 2**17 cycles at 100 MHz ~ 1.3 ms per digit
+  parameter int REFRESH_W = 17   // 2**15 cycles per digit at 100 MHz ~ 0.33 ms; 1.3 ms per scan
 ) (
   input  logic        clk,
   input  logic        rst_n,

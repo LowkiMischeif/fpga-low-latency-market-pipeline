@@ -6,8 +6,12 @@
 // backpressure; addressing idx alone would present the consumed word twice.
 //
 // The button is asynchronous: two flops, a rising-edge detect, and a lockout
-// of 2**LOCKOUT_W cycles (about 10 ms at 100 MHz with the default) so contact
-// bounce cannot restart a replay that finishes in well under a millisecond.
+// of 2**LOCKOUT_W cycles (about 10 ms at 100 MHz with the default). The lockout
+// restarts on every cycle the synchronized button reads high, so it expires
+// only after the button has been released and stayed low for the whole window.
+// Bounce on the press and bounce on the release both land inside it. Starting
+// the lockout only at the press was not enough: a real press outlasts 10 ms,
+// and the release bounce then started a second replay.
 module replay_ctrl
   import market_pkg::*;
 #(
@@ -30,6 +34,10 @@ module replay_ctrl
 
   (* ASYNC_REG = "TRUE" *) logic b1;
   (* ASYNC_REG = "TRUE" *) logic b2;
+  // b_prev makes the press an explicit rising-edge detect. With the lockout
+  // reloading while b2 is high it is logically redundant (lockout == 0 with b2
+  // high implies b2 was low a cycle ago), so no mutant is listed for it; it is
+  // kept so the edge detect does not depend on reading the lockout rule.
   logic                 b_prev;
   logic [LOCKOUT_W-1:0] lockout;
   logic [AW-1:0]        idx;
@@ -58,10 +66,10 @@ module replay_ctrl
       lockout <= '1;              // ignore anything bouncing out of reset
     end else begin
       start_pulse <= 1'b0;
-      if (lockout != '0) lockout <= lockout - 1'b1;
+      if (b2)                  lockout <= '1;
+      else if (lockout != '0)  lockout <= lockout - 1'b1;
       if (press) begin
-        busy <= 1'b1; idx <= '0; primed <= 1'b0;
-        lockout <= '1; start_pulse <= 1'b1;
+        busy <= 1'b1; idx <= '0; primed <= 1'b0; start_pulse <= 1'b1;
       end else if (busy) begin
         if (!primed) begin
           primed <= 1'b1;

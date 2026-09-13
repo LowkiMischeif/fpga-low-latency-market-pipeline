@@ -186,24 +186,40 @@ module tb_market_pipeline_top;
     check("loader committed once", dut.u_cfg.commit_count === 32'd1);
     check("loader cleared the kill switch", dut.u_cfg.risk_cfg.kill === 1'b0);
     ref_load("tb/configs/baseline.cfg");
-    fork top_press(); ref_replay(); join
+    // sw[0] flips halfway through the top's replay. The loader must defer the
+    // tuned load until the replay ends, so every run-1 decision is baseline.
+    fork
+      top_press();
+      ref_replay();
+      begin
+        repeat (N / 2) @(negedge clk);
+        check("premise: the top is mid-replay", dut.u_replay.busy === 1'b1);
+        sw[0] = 1'b1;
+        repeat (20) @(negedge clk);
+        check("a switch change mid-replay does not load", dut.u_cfg.commit_count === 32'd1);
+      end
+    join
     top_wait_idle();
     check("run 1 top produced N decisions", n_top == N);
     check("run 1 ref produced N decisions", n_ref == N);
     compare_run(0, N, "baseline");
+    check("the deferred load landed after the replay", dut.u_cfg.commit_count === 32'd2);
 
-    // ---- a press while the tuned preset loads is refused ---------------
-    sw[0] = 1'b1;
+    // ---- a press while a preset loads is refused -----------------------
+    sw[0] = 1'b0;
     repeat (4) @(negedge clk);
-    check("premise: the tuned preset is loading", dut.u_cfgl.busy === 1'b1);
+    check("premise: the baseline preset is loading", dut.u_cfgl.busy === 1'b1);
     top_press();
     check("a press during a config load does not start a replay",
           dut.u_replay.busy === 1'b0);
+    top_wait_idle();
+    check("baseline reloaded", dut.u_cfg.commit_count === 32'd3);
+    check("no decisions from the refused press", n_top == N);
 
     // ---- run 2: tuned, same trace, book and position carried over -------
+    sw[0] = 1'b1;
     top_wait_idle();
-    check("switch change committed again", dut.u_cfg.commit_count === 32'd2);
-    check("no decisions from the refused press", n_top == N);
+    check("switch change committed again", dut.u_cfg.commit_count === 32'd4);
     ref_load("tb/configs/tuned.cfg");
     fork top_press(); ref_replay(); join
     top_wait_idle();

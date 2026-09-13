@@ -3,8 +3,17 @@
 // Two ROM images, one per committed config, each the exact register-write
 // sequence export_config.py emits, ending in CFG_COMMIT. On reset release and
 // whenever the synchronized preset switch changes, the selected image is
-// replayed one write per cycle. busy covers the final registered write, so a
-// replay started after busy falls always sees the new configuration active.
+// replayed one write per cycle.
+//
+// The interlock with the replay runs both ways:
+//   * busy is high while a load is DUE (even if deferred), while it runs, and
+//     during the final registered write -- so a replay can start only when no
+//     configuration change is pending or in flight, and one started after busy
+//     falls always sees the new configuration active;
+//   * a due load does not start while hold_off is high (a replay is running),
+//     so one replay is never decided under two presets.
+// A switch change during a load is latched: the running image finishes and
+// commits, then the new one loads.
 module cfg_loader
   import market_pkg::*;
 #(
@@ -14,6 +23,7 @@ module cfg_loader
   input  logic                  clk,
   input  logic                  rst_n,
   input  logic                  sw_preset,   // asynchronous
+  input  logic                  hold_off,    // defer starting a load
   output logic [CFG_ADDR_W-1:0] cfg_addr,
   output logic [CFG_DATA_W-1:0] cfg_wdata,
   output logic                  cfg_we,
@@ -41,11 +51,12 @@ module cfg_loader
     else        begin s1 <= sw_preset; s2 <= s1; end
   end
 
-  logic                     loading, loaded;
+  logic                     loading, loaded, start_load;
   logic [$clog2(N_CFG)-1:0] idx;
 
+  assign start_load = !loading && (!loaded || (s2 != preset));
   assign word = preset ? rom_tuned[idx] : rom_base[idx];
-  assign busy = loading || cfg_we;
+  assign busy = start_load || loading || cfg_we;
 
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
@@ -54,7 +65,7 @@ module cfg_loader
     end else begin
       cfg_we <= 1'b0;
       if (!loading) begin
-        if (!loaded || (s2 != preset)) begin
+        if (start_load && !hold_off) begin
           loading <= 1'b1; idx <= '0; preset <= s2;
         end
       end else begin

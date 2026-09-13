@@ -14,7 +14,7 @@ module tb_cfg_loader;
   logic clk = 1'b0, rst_n = 1'b0;
   always #5 clk = ~clk;
 
-  logic sw_preset = 1'b0;
+  logic sw_preset = 1'b0, hold_off = 1'b0;
   logic [CFG_ADDR_W-1:0] cfg_addr;
   logic [CFG_DATA_W-1:0] cfg_wdata;
   logic cfg_we, busy, preset;
@@ -134,6 +134,22 @@ module tb_cfg_loader;
     check("back to baseline", policy_cfg === exp_p && risk_cfg === exp_r);
     check("third commit", commit_count === 32'd3);
 
+    // --- hold_off defers a due load, and busy reports it ----------------
+    hold_off = 1'b1;
+    sw_preset = 1'b1;
+    repeat (40) @(negedge clk);
+    check("hold_off defers the load", commit_count === 32'd3);
+    check("busy reports the deferred load", busy === 1'b1);
+    check("configuration untouched while deferred", policy_cfg === base_p && risk_cfg === base_r);
+    hold_off = 1'b0;
+    wait_loaded();
+    check("deferred load lands once hold_off falls",
+          policy_cfg === tuned_p && risk_cfg === tuned_r && commit_count === 32'd4);
+    sw_preset = 1'b0;                    // back to baseline for the next test
+    repeat (4) @(negedge clk);
+    wait_loaded();
+    check("fifth commit is baseline", policy_cfg === base_p && commit_count === 32'd5);
+
     // --- a switch change DURING a load -----------------------------------
     // Start a tuned load, flip the switch back at write 2. The load in
     // progress must commit whole, then baseline must load, and busy must not
@@ -170,8 +186,9 @@ module tb_cfg_loader;
     check("premise: reset lands during a load", busy === 1'b1);
     rst_n = 1'b0;
     repeat (3) @(negedge clk);
-    check("reset: kill armed, no commits, not busy",
-          risk_cfg.kill === 1'b1 && commit_count === '0 && busy === 1'b0);
+    // busy includes a load that is due, and out of reset one always is.
+    check("reset: kill armed, no commits, a load due",
+          risk_cfg.kill === 1'b1 && commit_count === '0 && busy === 1'b1);
     rst_n = 1'b1;
     wait_loaded();
     check("reset with the switch on tuned ends on tuned",
@@ -181,11 +198,12 @@ module tb_cfg_loader;
              commit_count);
 
     // The monitor and wait_loaded wake on the same negedge; give it one more
-    // so the last commit is counted. 3 + 2 (mid-load) + 2 (baseline, then
-    // tuned: the synchronizer resets to 0, so the first load after a reset is
-    // always baseline).
+    // so the last commit is counted. 3 + 2 (deferred tuned, then baseline) +
+    // 2 (mid-load) + 2 (baseline, then tuned: the synchronizer resets to 0, so
+    // the first load after a reset is always baseline).
     @(negedge clk);
-    check("whole-image monitor saw every commit", whole_commits == 7);
+    check("whole-image monitor saw every commit", whole_commits == 9);
+
     if (errors != 0) $fatal(1, "FAIL: %0d checks failed", errors);
     $display("PASS: tb_cfg_loader -- %0d commits, each one whole preset", whole_commits);
     $finish;

@@ -114,6 +114,22 @@ module tb_replay_ctrl;
     repeat (20) @(negedge clk);
     check("press inside lockout ignored", starts == 1 && got == N);
 
+    // --- bounce on the release of a long press starts nothing -----------
+    // A real press outlasts the lockout, so the release bounce arrives after
+    // a lockout that started at the press has already expired.
+    repeat (80) @(negedge clk);
+    got = 0; starts = 0;
+    @(negedge clk); btn = 1'b1;
+    repeat (300) @(negedge clk);           // held far longer than 2**6 cycles
+    for (int k = 0; k < 8; k++) begin      // contact bounce on release
+      btn = 1'b0; repeat (3) @(negedge clk);
+      btn = 1'b1; repeat (2) @(negedge clk);
+    end
+    btn = 1'b0;
+    repeat (100) @(negedge clk);
+    wait_idle();
+    check("bounce on release does not start a second replay", starts == 1 && got == N);
+
     // --- hold_off blocks a press ----------------------------------------
     repeat (80) @(negedge clk);
     got = 0; starts = 0;
@@ -131,8 +147,9 @@ module tb_replay_ctrl;
     got = 0; starts = 0;
     @(negedge clk); btn = 1'b1;
     repeat (300) @(negedge clk);
-    check("premise: replay done and lockout expired with the button still held",
-          busy === 1'b0 && dut.lockout == '0);
+    // The lockout reloads while the button is held, so it does not expire here;
+    // the replay has finished and the button is still down.
+    check("premise: replay done with the button still held", busy === 1'b0);
     btn = 1'b0;
     repeat (80) @(negedge clk);
     check("held button: exactly one replay", starts == 1 && got == N);

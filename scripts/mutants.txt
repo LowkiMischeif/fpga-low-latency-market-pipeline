@@ -100,9 +100,11 @@ replay: lockout ignored @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@ assign press 
 replay: hold_off ignored @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@ && !busy && !hold_off; @@ && !busy;
 replay: last word dropped @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@   assign last   = (idx == AW'(N_TRACE - 1)); @@   assign last   = (idx == AW'(N_TRACE - 2));
 replay: stale ROM word presented before priming @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@   assign s_valid  = busy && primed; @@   assign s_valid  = busy;
-# Survived the suite before the held-button test: every press() released well
-# inside the lockout, so an edge detect and a level detect looked the same.
-replay: press is level-sensitive (held button replays again) @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@ assign press  = b2 && !b_prev && (lockout == '0) @@ assign press  = b2 && (lockout == '0)
+# NOT LISTED: "replay: press is level-sensitive". It survived before the
+# held-button test, and that test killed it -- but since the lockout reloads on
+# every cycle the button reads high, lockout == '0 can only hold on the first
+# high cycle, so b2 && lockout == '0 is the edge detect. The mutant is now
+# equivalent to the RTL; tb_replay_ctrl still pins one replay per held press.
 # Survived: event_decoder captures on s_ready alone, so a source that drives
 # garbage while stalled changes no decision. Killed by stream_source_checker.
 replay: s_data not held while stalled @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@   assign s_data   = rom_data; @@   assign s_data   = s_ready ? rom_data : '0;
@@ -111,17 +113,27 @@ replay: s_data not held while stalled @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@
 replay: last word dropped under a stall @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@         end else if (accept) begin @@         end else if (accept || last) begin
 replay: a new press does not restart idx @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@ busy <= 1'b1; idx <= '0; primed <= 1'b0; @@ busy <= 1'b1; primed <= 1'b0;
 replay: start_pulse lasts two cycles @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@       start_pulse <= 1'b0; @@       start_pulse <= busy && !primed;
+# Killed only by the release-bounce vector: a press outlasts the lockout.
+replay: lockout restarts only at the press (release bounce) @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@       if (b2)                  lockout <= '1; @@       if (press)               lockout <= '1;
 
 == cfg_loader ==
-cfgl: switch change does not reload @@ rtl/cfg_loader.sv @@ tb_cfg_loader @@ if (!loaded || (s2 != preset)) begin @@ if (!loaded) begin
+cfgl: switch change does not reload @@ rtl/cfg_loader.sv @@ tb_cfg_loader @@ assign start_load = !loading && (!loaded || (s2 != preset)); @@ assign start_load = !loading && !loaded;
 cfgl: presets swapped @@ rtl/cfg_loader.sv @@ tb_cfg_loader @@ assign word = preset ? rom_tuned[idx] : rom_base[idx]; @@ assign word = preset ? rom_base[idx] : rom_tuned[idx];
 cfgl: final write (the commit) skipped @@ rtl/cfg_loader.sv @@ tb_cfg_loader @@ if (idx == ($clog2(N_CFG))'(N_CFG - 1)) begin @@ if (idx == ($clog2(N_CFG))'(N_CFG - 2)) begin
-cfgl: busy drops before the last write lands @@ rtl/cfg_loader.sv @@ tb_cfg_loader @@ assign busy = loading || cfg_we; @@ assign busy = loading;
-# The next three survived: the switch only ever changed while the loader was
-# idle. Each commits a mixed image, or opens an idle cycle between two loads.
+cfgl: busy drops before the last write lands @@ rtl/cfg_loader.sv @@ tb_cfg_loader @@ assign busy = start_load || loading || cfg_we; @@ assign busy = start_load || loading;
+# The next two survived: the switch only ever changed while the loader was
+# idle. Each commits a mixed image.
 cfgl: image read from the live switch (mixed commit) @@ rtl/cfg_loader.sv @@ tb_cfg_loader @@ assign word = preset ? rom_tuned[idx] : rom_base[idx]; @@ assign word = s2 ? rom_tuned[idx] : rom_base[idx];
 cfgl: preset follows the switch mid-load @@ rtl/cfg_loader.sv @@ tb_cfg_loader @@         cfg_we    <= 1'b1; @@         cfg_we    <= 1'b1; preset <= s2;
-cfgl: busy gap between back-to-back loads @@ rtl/cfg_loader.sv @@ tb_cfg_loader @@ if (!loaded || (s2 != preset)) begin @@ if (!cfg_we && (!loaded || (s2 != preset))) begin
+# NOT LISTED: "cfgl: busy gap between back-to-back loads". It survived the
+# suite before the mid-load test and was killed by it -- while busy was
+# loading || cfg_we. busy now also includes start_load, so the gap cannot open
+# by construction: in the cycle the mutant blocks start_load, cfg_we holds busy
+# high, and start_load holds it the cycle after. The mutant only starts the
+# second load one cycle later, which no requirement pins; it is equivalent.
+# The interlock with the replay, both directions.
+cfgl: busy ignores a deferred load @@ rtl/cfg_loader.sv @@ tb_cfg_loader @@ assign busy = start_load || loading || cfg_we; @@ assign busy = loading || cfg_we;
+cfgl: load not deferred by hold_off @@ rtl/cfg_loader.sv @@ tb_cfg_loader @@ if (start_load && !hold_off) begin @@ if (start_load) begin
 
 == seg7_display ==
 seg7: digit 3 decodes as 8 @@ rtl/seg7_display.sv @@ tb_seg7_display @@ 4'h3: seg = 7'b0110000; @@ 4'h3: seg = 7'b0000000;
@@ -134,6 +146,7 @@ top: BUY and SELL counters swapped @@ rtl/market_pipeline_top.sv @@ tb_market_pi
 top: replay not held off while config loads @@ rtl/market_pipeline_top.sv @@ tb_market_pipeline_top @@ .btn(btnC), .hold_off(cfg_busy), @@ .btn(btnC), .hold_off(1'b0),
 top: counters not cleared on a new replay @@ rtl/market_pipeline_top.sv @@ tb_market_pipeline_top @@ end else if (start_pulse) begin @@ end else if (1'b0) begin
 top: preset switch not wired @@ rtl/market_pipeline_top.sv @@ tb_market_pipeline_top @@ .sw_preset(sw[0]), @@ .sw_preset(1'b0),
+top: loader not held off by a replay @@ rtl/market_pipeline_top.sv @@ tb_market_pipeline_top @@ .hold_off(replay_busy), @@ .hold_off(1'b0),
 # Survived: counters are X until the first start_pulse and nothing looked at
 # the LEDs across a reset. The first match is the reset branch.
 top: counters not cleared by reset @@ rtl/market_pipeline_top.sv @@ tb_market_pipeline_top @@ buy_cnt <= '0; sell_cnt <= '0; rej_cnt <= '0; @@ buy_cnt <= buy_cnt; sell_cnt <= sell_cnt; rej_cnt <= rej_cnt;
