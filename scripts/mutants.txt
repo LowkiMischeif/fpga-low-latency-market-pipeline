@@ -47,6 +47,8 @@ pol-snap: w0 read live @@ rtl/policy_engine.sv @@ tb_policy_engine @@ assign sco
 pol-snap: theta_buy read live @@ rtl/policy_engine.sv @@ tb_policy_engine @@ else if (score2 >  tbuy_1)       dec2 = DEC_BUY; @@ else if (score2 >  cfg.theta_buy) dec2 = DEC_BUY;
 pol-snap: theta_sell read live @@ rtl/policy_engine.sv @@ tb_policy_engine @@ else if (score2 <  tsell_1)      dec2 = DEC_SELL; @@ else if (score2 <  cfg.theta_sell) dec2 = DEC_SELL;
 pol-snap: order_qty read live @@ rtl/policy_engine.sv @@ tb_policy_engine @@       m_order_qty <= oq_1; @@       m_order_qty <= cfg.order_qty;
+pol-snap: snapshot reloads on every edge @@ rtl/policy_engine.sv @@ tb_policy_engine @@   assign snap_en = advance; @@   assign snap_en = 1'b1;
+pol-snap: multiplies moved to stage 2 on live weights @@ rtl/policy_engine.sv @@ tb_policy_engine @@   assign acc2    = ACC_W'(p_spread1) + ACC_W'(p_imb1) + ACC_W'(p_mom1); @@   assign acc2    = ACC_W'(cfg.w_spread * ft1.spread) + ACC_W'(cfg.w_imbalance * ft1.imbalance) + ACC_W'(cfg.w_momentum * ft1.momentum);
 pol-snap: risk limits read live @@ rtl/policy_engine.sv @@ tb_policy_engine @@       m_risk_cfg  <= rc_1; @@       m_risk_cfg  <= risk_cfg_in;
 
 == risk_gate ==

@@ -38,11 +38,18 @@ if sys.argv[2] not in s:
     sys.exit(1)
 p.write_text(s.replace(sys.argv[2], sys.argv[3], 1))
 PY
-  if make sim TOP="$tb" >/dev/null 2>&1; then
+  # A kill needs evidence the simulation RAN and failed. A mutant whose
+  # replacement text does not compile also makes `make sim` fail, and scoring
+  # that as a kill would count a typo in mutants.txt as a test catching a bug.
+  local log; log=$(mktemp)
+  if make sim TOP="$tb" > "$log" 2>&1; then
     printf '%-52s SURVIVED\n' "$name"; FAIL=$((FAIL+1))
-  else
+  elif grep -qE "SIMULATION FAILED|no PASS: marker" "$log"; then
     printf '%-52s killed\n' "$name"; PASS=$((PASS+1))
+  else
+    printf '%-52s DOES NOT BUILD\n' "$name"; FAIL=$((FAIL+1))
   fi
+  rm -f "$log"
   cp -f "$BACKUP/$(basename "$file")" "$file"
 }
 
@@ -86,5 +93,9 @@ while IFS= read -r line; do
 done < "$MUTANTS"
 
 echo
+if [ $((PASS + FAIL)) -eq 0 ]; then
+  echo "ERROR: no mutant matched filter '$FILTER'."
+  exit 3
+fi
 echo "killed $PASS, survived $FAIL"
 [ "$FAIL" -eq 0 ]

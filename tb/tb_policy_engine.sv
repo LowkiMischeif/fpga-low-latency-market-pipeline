@@ -259,7 +259,9 @@ module tb_policy_engine;
       check("snap(a) order_qty from X", mon_qty[e1]   === QTY_W'(7));
       check("snap(a) risk limits from X", mon_risk[e1] === rx);
 
-      // (b) the event is held by a stall while the config changes twice.
+      // (b) a stall with the event already past the snapshot stage: config
+      // changes cannot reach it any more. Kept as a regression vector; it is
+      // (e) below that holds an event IN the snapshot stage.
       @(negedge clk);
       m_ready = 1'b0;
       cfg = cx; risk_cfg_in = rx;
@@ -270,7 +272,7 @@ module tb_policy_engine;
       @(negedge clk);
       s_valid = 1'b0;
       cfg = cy; risk_cfg_in = ry;
-      repeat (4) @(negedge clk);               // now parked in stage 2
+      repeat (4) @(negedge clk);               // already in the OUTPUT register
       cfg = cz; risk_cfg_in = rz;
       repeat (3) @(negedge clk);
       m_ready = 1'b1;
@@ -344,6 +346,76 @@ module tb_policy_engine;
         wait_out(e1);
         check("snap(d) SELL survives a stall under a moved theta_sell",
               mon_dec[e1] === DEC_SELL);
+      end
+
+      // (e) THE stall that matters, with non-zero weights and features.
+      //
+      // Every earlier case used w_spread = w_imbalance = w_momentum = 0 and
+      // zero features, so reading those three weights live was invisible, and
+      // no case ever held an event in the snapshot stage while config changed.
+      // Here m_ready is low and two events are fed: E1 moves to the output
+      // register and E2 is left sitting in stage 1 with its snapshot captured.
+      // Then every field changes. Both must still come out under X.
+      begin
+        policy_cfg_t wx, wy;
+        risk_cfg_t   rwx, rwy;
+        logic signed [SCORE_W-1:0] sx, sy;
+        int ea, eb;
+        wx = mk_cfg( 10,  4096,  2048,  1024,  100,  -100, 7);
+        wy = mk_cfg(-10, -4096, -2048, -1024, 5000, -5000, 9);
+        rwx = '0; rwx.max_long = 11; rwx.max_short = 22; rwx.max_order_qty = 33;
+        rwx.max_spread = 44; rwx.kill = 1'b0;
+        rwy = '0; rwy.max_long = 55; rwy.max_short = 66; rwy.max_order_qty = 77;
+        rwy.max_spread = 88; rwy.kill = 1'b1;
+        sx = ref_score(wx, 200, 800, 40);
+        sy = ref_score(wy, 200, 800, 40);
+        // Guard the vector itself: it must discriminate, or it proves nothing.
+        if (sx === sy || !(sx > 100) || (sy > 5000) || (sy < -5000))
+          $fatal(1, "FAIL: snap(e) vectors do not discriminate (sx=%0d sy=%0d)", sx, sy);
+
+        // (e1) non-zero weights, config changes the cycle after accept.
+        @(negedge clk); while (!s_ready) @(negedge clk);
+        cfg = wx; risk_cfg_in = rwx;
+        ea = feed_seq; feed_seq++;
+        s_event = '0; s_event.seq = SEQ_W'(ea); s_err = '0;
+        s_feat = '0; s_feat.spread = SPREAD_W'(200);
+        s_feat.imbalance = IMB_W'(800); s_feat.momentum = MOM_W'(40);
+        s_valid = 1'b1;
+        @(posedge clk);
+        @(negedge clk);
+        s_valid = 1'b0;
+        cfg = wy; risk_cfg_in = rwy;
+        wait_out(ea);
+        check("snap(e1) score uses captured weights", mon_score[ea] === sx);
+        check("snap(e1) decision from X",             mon_dec[ea]   === DEC_BUY);
+
+        // (e2) full pipe: E1 in the output register, E2 in stage 1, stalled.
+        @(negedge clk);
+        m_ready = 1'b0;
+        cfg = wx; risk_cfg_in = rwx;
+        ea = feed_seq; feed_seq++;
+        eb = feed_seq; feed_seq++;
+        s_event = '0; s_event.seq = SEQ_W'(ea); s_err = '0;
+        s_feat = '0; s_feat.spread = SPREAD_W'(200);
+        s_feat.imbalance = IMB_W'(800); s_feat.momentum = MOM_W'(40);
+        s_valid = 1'b1;
+        @(posedge clk);                          // E1 accepted
+        @(negedge clk);
+        s_event.seq = SEQ_W'(eb);                // s_valid stays high
+        @(posedge clk);                          // E1 -> output reg, E2 -> stage 1
+        @(negedge clk);
+        s_valid = 1'b0;
+        check("snap(e2) pipe is really stalled", s_ready === 1'b0);
+        cfg = wy; risk_cfg_in = rwy;             // every field changes, E2 parked
+        repeat (5) @(negedge clk);
+        m_ready = 1'b1;
+        wait_out(ea);
+        wait_out(eb);
+        check("snap(e2) E1 score from X",              mon_score[ea] === sx);
+        check("snap(e2) E2 held in stage 1: score from X", mon_score[eb] === sx);
+        check("snap(e2) E2 decision from X",           mon_dec[eb]   === DEC_BUY);
+        check("snap(e2) E2 order_qty from X",          mon_qty[eb]   === QTY_W'(7));
+        check("snap(e2) E2 risk limits from X",        mon_risk[eb]  === rwx);
       end
 
       cfg = mk_cfg(0, 0, 0, 0, 1, -1, 10);

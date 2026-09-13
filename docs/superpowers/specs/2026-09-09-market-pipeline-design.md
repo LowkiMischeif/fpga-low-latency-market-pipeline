@@ -410,11 +410,13 @@ snapshot had already made it redundant, so it was deleted rather than kept as
 decoration that looked load-bearing.
 
 `tb/tb_policy_engine.sv` pins it directly: it changes every configuration
-field — weights, thresholds, order size, every risk limit and the kill switch —
-one cycle after accept, twice during a stall, and between two back-to-back
-accepts, and requires each event's outputs to reflect the configuration it was
-accepted under. Five mutants that make stage 2 read the live configuration are
-aimed at that test. `tb/tb_policy_configs.sv` adds the end-to-end view — a
+field — all four weights with non-zero features, both thresholds, order size,
+every risk limit and the kill switch — one cycle after accept, between two
+back-to-back accepts, and during a stall that holds an event *in* the snapshot
+stage with the next one ahead of it in the output register. Each event's outputs
+must reflect the configuration it was accepted under. Seven mutants aimed at
+that test make the snapshot leak: stage 2 reading any live field, the snapshot
+reloading on stalled edges, or the multiplies retimed into stage 2. `tb/tb_policy_configs.sv` adds the end-to-end view — a
 commit mid-stream with the pipeline never drained — but on its own it cannot
 prove the snapshot: the two committed configurations share their risk limits
 and order size, and it accepts an event on every edge.
