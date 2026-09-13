@@ -7,6 +7,12 @@
 // position. Latency inside the top, decoder accept to risk handoff, must be
 // LATENCY_CYCLES for every event. A press while a preset is loading must be
 // refused.
+//
+// Run 3 asserts btnU halfway through a replay, with events in every stage. The
+// reference chain is reset at the same instant and has been fed nothing since
+// run 2, so after the reset both sit before event 0 with a clean book. The top
+// must come back as it does from power-on -- counters dark, kill armed until
+// the loader recommits the selected preset -- and a fresh replay must match.
 module tb_market_pipeline_top;
   import market_pkg::*;
   localparam int N = 2000;
@@ -95,7 +101,7 @@ module tb_market_pipeline_top;
   endtask
 
   // ---------------- recorders ----------------
-  localparam int CAP = 2 * N;
+  localparam int CAP = 3 * N;
   decision_t top_d [CAP];
   decision_t ref_d [CAP];
   int n_top = 0, n_ref = 0;
@@ -109,10 +115,12 @@ module tb_market_pipeline_top;
   end
 
   // Latency inside the top: decoder accept to risk handoff, FIFO by order.
+  // A reset discards whatever was in flight, so it empties the queue too.
   int cyc = 0, lat_bad = 0, lat_n = 0, t0;
   int ing [$];
   always @(posedge clk) begin
     cyc++;
+    if (!dut.rst_n) ing.delete();
     if (dut.u_dec.s_valid && dut.u_dec.s_ready) ing.push_back(cyc);
     if (dut.u_risk.m_valid && dut.u_risk.m_ready && ing.size() > 0) begin
       t0 = ing.pop_front();
@@ -161,6 +169,8 @@ module tb_market_pipeline_top;
     check({tag, " policy actually traded"}, buys + sells > 0);
   endtask
 
+  int k_partial = 0, wguard;
+
   initial begin
     r_svalid = 1'b0; r_sdata = '0;
     // Reset both, release together.
@@ -202,12 +212,55 @@ module tb_market_pipeline_top;
 
     check("latency measured for every event", lat_n == 2 * N);
     check("latency is LATENCY_CYCLES for every event", lat_bad == 0);
-    $display("INFO: top latency %0d events, %0d not at %0d cycles",
-             lat_n, lat_bad, LATENCY_CYCLES);
+
+    // ---- run 3: btnU asserted in the middle of a replay -----------------
+    check("premise: run 3 starts from a non-zero position", dut.u_risk.position !== '0);
+    top_press();
+    wguard = 0;
+    // Wait on handed-off decisions (int vs int), not on the replay's 11-bit
+    // idx: both int'(dut.u_replay.idx) and a sized constant compared wrongly
+    // in xsim, one never exiting and one exiting at once.
+    while (n_top < 2 * N + N / 2) begin
+      @(negedge clk);
+      wguard++;
+      if (wguard > 4 * N) $fatal(1, "FAIL: run 3 replay never reached mid-trace");
+    end
+    check("premise: reset lands mid-replay with events in flight",
+          dut.u_replay.busy === 1'b1 && ing.size() > 0);
+    btnU = 1'b1; rrst_n = 1'b0;
+    k_partial = n_top - 2 * N;
+    check("premise: at least N/2 decisions handed off before the reset", k_partial >= N / 2);
+    repeat (4) @(negedge clk);
+    check("reset: replay stopped", dut.u_replay.busy === 1'b0 && dut.u_dec.s_valid === 1'b0);
+    check("reset: nothing leaves risk_gate", dut.u_risk.m_valid === 1'b0);
+    check("reset: kill switch re-armed", dut.u_cfg.risk_cfg.kill === 1'b1);
+    check("reset: counters and LEDs cleared", led === 16'h0 && dut.rej_cnt === 16'h0);
+    n_top = 2 * N;                  // the partial run's decisions are discarded
+    btnU = 1'b0; rrst_n = 1'b1;
+
+    top_wait_idle();
+    check("after reset the loader recommitted and cleared kill",
+          dut.u_cfg.commit_count >= 1 && dut.u_cfg.risk_cfg.kill === 1'b0);
+    check("after reset the counters stay clear until a press",
+          led === 16'h0 && dut.rej_cnt === 16'h0);
+    check("no decision leaks out of the reset", n_top == 2 * N);
+    ref_load("tb/configs/tuned.cfg");
+    check("recommitted config is the selected (tuned) preset",
+          dut.u_cfg.policy_cfg === pcfg && dut.u_cfg.risk_cfg === rcfg);
+    fork top_press(); ref_replay(); join
+    top_wait_idle();
+    check("run 3 top produced N decisions after the reset", n_top == 3 * N);
+    check("run 3 ref produced N decisions", n_ref == 3 * N);
+    compare_run(2 * N, 3 * N, "after mid-replay reset");
+
+    check("latency measured for every handed-off event", lat_n == 3 * N + k_partial);
+    check("latency is LATENCY_CYCLES for every event, across the reset", lat_bad == 0);
+    $display("INFO: top latency %0d events, %0d not at %0d cycles (%0d handed off before the reset)",
+             lat_n, lat_bad, LATENCY_CYCLES, k_partial);
 
     if (errors != 0) $fatal(1, "FAIL: %0d checks failed", errors);
     $display("PASS: tb_market_pipeline_top -- %0d decisions matched the reference chain,",
-             2 * N, " latency %0d cycles", LATENCY_CYCLES);
+             3 * N, " latency %0d cycles", LATENCY_CYCLES);
     $finish;
   end
 

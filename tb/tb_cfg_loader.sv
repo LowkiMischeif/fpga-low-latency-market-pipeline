@@ -3,6 +3,11 @@
 // The ground truth is the committed .cfg file, read independently of the .mem
 // image the loader uses: after a load, every active field must equal what
 // writing that .cfg by hand would have produced.
+//
+// Also pinned: every commit, whenever it lands, applies one whole preset --
+// never a mix; a switch change during a load finishes and commits the load in
+// progress, then loads the new preset with busy high throughout; and a reset
+// released with the switch already on tuned ends on tuned.
 module tb_cfg_loader;
   import market_pkg::*;
 
@@ -63,7 +68,35 @@ module tb_cfg_loader;
     while (busy) begin @(negedge clk); guard++; if (guard > 200) $fatal(1, "FAIL: load hung"); end
   endtask
 
+  // Whole-image monitor: every time commit_count moves, the active config must
+  // be exactly one of the two presets.
+  policy_cfg_t base_p, tuned_p;
+  risk_cfg_t   base_r, tuned_r;
+  logic [CNT_W-1:0] seen_commits = '0;
+  int whole_commits = 0;
+  always @(negedge clk) begin
+    if (!rst_n || commit_count === '0) seen_commits = '0;
+    else if (commit_count !== seen_commits) begin
+      seen_commits = commit_count;
+      whole_commits++;
+      check($sformatf("commit %0d applies one whole preset", commit_count),
+            (policy_cfg === base_p  && risk_cfg === base_r) ||
+            (policy_cfg === tuned_p && risk_cfg === tuned_r));
+    end
+  end
+
+  logic [CNT_W-1:0] c0;
+  int  wguard;
+  bit  saw_tuned;
+
   initial begin
+    expect_from_cfg("tb/configs/baseline.cfg"); base_p  = exp_p; base_r  = exp_r;
+    expect_from_cfg("tb/configs/tuned.cfg");    tuned_p = exp_p; tuned_r = exp_r;
+    // The mid-load test below relies on the presets differing both before and
+    // after the write at which the switch changes.
+    check("premise: presets differ early and late in the image",
+          base_p.w0 !== tuned_p.w0 && base_p.theta_sell !== tuned_p.theta_sell);
+
     repeat (3) @(posedge clk);
     check("reset config is killed", risk_cfg.kill === 1'b1);
     rst_n = 1'b1;
@@ -101,8 +134,60 @@ module tb_cfg_loader;
     check("back to baseline", policy_cfg === exp_p && risk_cfg === exp_r);
     check("third commit", commit_count === 32'd3);
 
+    // --- a switch change DURING a load -----------------------------------
+    // Start a tuned load, flip the switch back at write 2. The load in
+    // progress must commit whole, then baseline must load, and busy must not
+    // fall between the two: an idle cycle there would let a replay start on
+    // the intermediate configuration.
+    c0 = commit_count;
+    sw_preset = 1'b1;
+    wguard = 0;
+    while (!(busy === 1'b1 && u_load.idx == 2)) begin
+      @(negedge clk);
+      wguard++;
+      if (wguard > 50) $fatal(1, "FAIL: tuned load never reached write 2");
+    end
+    sw_preset = 1'b0;
+    saw_tuned = 1'b0; wguard = 0;
+    while (commit_count !== c0 + 2) begin
+      check("busy stays high across back-to-back loads", busy === 1'b1);
+      if (commit_count === c0 + 1 && !saw_tuned) begin
+        saw_tuned = 1'b1;
+        check("interrupted load finished: tuned committed whole",
+              policy_cfg === tuned_p && risk_cfg === tuned_r);
+      end
+      @(negedge clk);
+      wguard++;
+      if (wguard > 200) $fatal(1, "FAIL: back-to-back loads never committed twice");
+    end
+    check("the load in progress committed before the reload", saw_tuned);
+    check("reload committed baseline as busy fell",
+          busy === 1'b0 && policy_cfg === base_p && risk_cfg === base_r && preset === 1'b0);
+
+    // --- reset mid-load, released with the switch on tuned ---------------
+    sw_preset = 1'b1;
+    repeat (4) @(negedge clk);
+    check("premise: reset lands during a load", busy === 1'b1);
+    rst_n = 1'b0;
+    repeat (3) @(negedge clk);
+    check("reset: kill armed, no commits, not busy",
+          risk_cfg.kill === 1'b1 && commit_count === '0 && busy === 1'b0);
+    rst_n = 1'b1;
+    wait_loaded();
+    check("reset with the switch on tuned ends on tuned",
+          policy_cfg === tuned_p && risk_cfg === tuned_r && preset === 1'b1);
+    check("reset: at least one commit", commit_count >= 1);
+    $display("INFO: reset released with the switch on tuned: %0d commit(s) before busy fell",
+             commit_count);
+
+    // The monitor and wait_loaded wake on the same negedge; give it one more
+    // so the last commit is counted. 3 + 2 (mid-load) + 2 (baseline, then
+    // tuned: the synchronizer resets to 0, so the first load after a reset is
+    // always baseline).
+    @(negedge clk);
+    check("whole-image monitor saw every commit", whole_commits == 7);
     if (errors != 0) $fatal(1, "FAIL: %0d checks failed", errors);
-    $display("PASS: tb_cfg_loader");
+    $display("PASS: tb_cfg_loader -- %0d commits, each one whole preset", whole_commits);
     $finish;
   end
 

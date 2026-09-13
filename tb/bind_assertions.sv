@@ -96,3 +96,12 @@ bind risk_gate handshake_checker #(
   .m_tag(m_event.seq),
   .m_payload({m_event, m_err, m_feat, m_decision})
 );
+
+// The stimulus source in front of event_decoder: the whole word must hold
+// while s_ready is low, not just the seq slice the decoder's checker sees.
+bind replay_ctrl stream_source_checker #(
+  .DATA_W(market_pkg::EVENT_W)
+) u_src_chk (
+  .clk(clk), .rst_n(rst_n),
+  .valid(s_valid), .ready(s_ready), .data(s_data)
+);

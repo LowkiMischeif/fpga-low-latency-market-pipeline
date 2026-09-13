@@ -100,19 +100,40 @@ replay: lockout ignored @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@ assign press 
 replay: hold_off ignored @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@ && !busy && !hold_off; @@ && !busy;
 replay: last word dropped @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@   assign last   = (idx == AW'(N_TRACE - 1)); @@   assign last   = (idx == AW'(N_TRACE - 2));
 replay: stale ROM word presented before priming @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@   assign s_valid  = busy && primed; @@   assign s_valid  = busy;
+# Survived the suite before the held-button test: every press() released well
+# inside the lockout, so an edge detect and a level detect looked the same.
+replay: press is level-sensitive (held button replays again) @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@ assign press  = b2 && !b_prev && (lockout == '0) @@ assign press  = b2 && (lockout == '0)
+# Survived: event_decoder captures on s_ready alone, so a source that drives
+# garbage while stalled changes no decision. Killed by stream_source_checker.
+replay: s_data not held while stalled @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@   assign s_data   = rom_data; @@   assign s_data   = s_ready ? rom_data : '0;
+# Killed before, but only if the xorshift ready happened to stall on the last
+# word; the directed last-word stall now pins it regardless of the seed.
+replay: last word dropped under a stall @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@         end else if (accept) begin @@         end else if (accept || last) begin
+replay: a new press does not restart idx @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@ busy <= 1'b1; idx <= '0; primed <= 1'b0; @@ busy <= 1'b1; primed <= 1'b0;
+replay: start_pulse lasts two cycles @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@       start_pulse <= 1'b0; @@       start_pulse <= busy && !primed;
 
 == cfg_loader ==
 cfgl: switch change does not reload @@ rtl/cfg_loader.sv @@ tb_cfg_loader @@ if (!loaded || (s2 != preset)) begin @@ if (!loaded) begin
 cfgl: presets swapped @@ rtl/cfg_loader.sv @@ tb_cfg_loader @@ assign word = preset ? rom_tuned[idx] : rom_base[idx]; @@ assign word = preset ? rom_base[idx] : rom_tuned[idx];
 cfgl: final write (the commit) skipped @@ rtl/cfg_loader.sv @@ tb_cfg_loader @@ if (idx == ($clog2(N_CFG))'(N_CFG - 1)) begin @@ if (idx == ($clog2(N_CFG))'(N_CFG - 2)) begin
 cfgl: busy drops before the last write lands @@ rtl/cfg_loader.sv @@ tb_cfg_loader @@ assign busy = loading || cfg_we; @@ assign busy = loading;
+# The next three survived: the switch only ever changed while the loader was
+# idle. Each commits a mixed image, or opens an idle cycle between two loads.
+cfgl: image read from the live switch (mixed commit) @@ rtl/cfg_loader.sv @@ tb_cfg_loader @@ assign word = preset ? rom_tuned[idx] : rom_base[idx]; @@ assign word = s2 ? rom_tuned[idx] : rom_base[idx];
+cfgl: preset follows the switch mid-load @@ rtl/cfg_loader.sv @@ tb_cfg_loader @@         cfg_we    <= 1'b1; @@         cfg_we    <= 1'b1; preset <= s2;
+cfgl: busy gap between back-to-back loads @@ rtl/cfg_loader.sv @@ tb_cfg_loader @@ if (!loaded || (s2 != preset)) begin @@ if (!cfg_we && (!loaded || (s2 != preset))) begin
 
 == seg7_display ==
 seg7: digit 3 decodes as 8 @@ rtl/seg7_display.sv @@ tb_seg7_display @@ 4'h3: seg = 7'b0110000; @@ 4'h3: seg = 7'b0000000;
 seg7: anodes 0 and 1 swapped @@ rtl/seg7_display.sv @@ tb_seg7_display @@ 2'd0: begin an = 4'b1110; nib = value[3:0];   end @@ 2'd0: begin an = 4'b1101; nib = value[3:0];   end
+# Survived: nothing checked the scan period, only which digit each anode shows.
+seg7: scan runs at the clock rate @@ rtl/seg7_display.sv @@ tb_seg7_display @@ assign digit = ctr[REFRESH_W-1 -: 2]; @@ assign digit = ctr[1:0];
 
 == market_pipeline_top ==
 top: BUY and SELL counters swapped @@ rtl/market_pipeline_top.sv @@ tb_market_pipeline_top @@ if (r_decision.decision == DEC_BUY)  buy_cnt  <= buy_cnt  + 1'b1; @@ if (r_decision.decision == DEC_SELL) buy_cnt  <= buy_cnt  + 1'b1;
 top: replay not held off while config loads @@ rtl/market_pipeline_top.sv @@ tb_market_pipeline_top @@ .btn(btnC), .hold_off(cfg_busy), @@ .btn(btnC), .hold_off(1'b0),
 top: counters not cleared on a new replay @@ rtl/market_pipeline_top.sv @@ tb_market_pipeline_top @@ end else if (start_pulse) begin @@ end else if (1'b0) begin
 top: preset switch not wired @@ rtl/market_pipeline_top.sv @@ tb_market_pipeline_top @@ .sw_preset(sw[0]), @@ .sw_preset(1'b0),
+# Survived: counters are X until the first start_pulse and nothing looked at
+# the LEDs across a reset. The first match is the reset branch.
+top: counters not cleared by reset @@ rtl/market_pipeline_top.sv @@ tb_market_pipeline_top @@ buy_cnt <= '0; sell_cnt <= '0; rej_cnt <= '0; @@ buy_cnt <= buy_cnt; sell_cnt <= sell_cnt; rej_cnt <= rej_cnt;

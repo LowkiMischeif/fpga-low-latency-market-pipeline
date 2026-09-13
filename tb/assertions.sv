@@ -246,3 +246,33 @@ module handshake_checker #(
                 q_depth, in_count - out_count);
 
 endmodule
+
+// stream_source_checker -- the producer half of a valid/ready stream, for a
+// block that only drives one (replay_ctrl). handshake_checker's input-side
+// properties are stimulus-only at event_decoder and see only the seq slice;
+// the full word is what the spec's "holding while s_ready is low" promises.
+//
+// Liveness: tb_replay_ctrl (random backpressure, a long stall on the last
+// word). In tb_market_pipeline_top s_ready never falls, so there only the X
+// check has an antecedent.
+module stream_source_checker #(
+  parameter int DATA_W = 1
+) (
+  input logic              clk,
+  input logic              rst_n,
+  input logic              valid,
+  input logic              ready,
+  input logic [DATA_W-1:0] data
+);
+  a_src_no_retraction: assert property (
+    @(posedge clk) disable iff (!rst_n) (valid && !ready) |=> valid)
+    else $error("source retracted valid before ready");
+
+  a_src_data_stable: assert property (
+    @(posedge clk) disable iff (!rst_n) (valid && !ready) |=> $stable(data))
+    else $error("source changed an offered word during a stall");
+
+  a_src_no_x: assert property (
+    @(posedge clk) disable iff (!rst_n) valid |-> !$isunknown(data))
+    else $error("source valid with X/Z data");
+endmodule
