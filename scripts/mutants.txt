@@ -140,7 +140,8 @@ cfgl: preset follows the switch mid-load @@ rtl/cfg_loader.sv @@ tb_cfg_loader @
 # loading || cfg_we. busy now also includes start_load, so the gap cannot open
 # by construction: in the cycle the mutant blocks start_load, cfg_we holds busy
 # high, and start_load holds it the cycle after. The mutant only starts the
-# second load one cycle later, which no requirement pins; it is equivalent.
+# second load one cycle later -- observable on cfg_we/cfg_addr, but required by
+# nothing, so no test pins it. Not equivalent; not a gap in any requirement.
 # The interlock with the replay, both directions.
 cfgl: busy ignores a deferred load @@ rtl/cfg_loader.sv @@ tb_cfg_loader @@ assign busy = start_load || loading || cfg_we; @@ assign busy = loading || cfg_we;
 cfgl: load not deferred by hold_off @@ rtl/cfg_loader.sv @@ tb_cfg_loader @@ if (start_load && !hold_off) begin @@ if (start_load) begin

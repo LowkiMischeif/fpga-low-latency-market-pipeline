@@ -97,7 +97,12 @@ def quantise_weights(w: dict) -> dict:
 
 
 def rtl_score(qw: dict, r: dict) -> int:
-    """Bit-exact mirror of policy_engine.sv's score, integers throughout."""
+    """Integer mirror of policy_engine.sv's score.
+
+    It does not saturate. It matches the RTL because the score cannot reach
+    the SCORE_W rail at these widths (see the NOT LISTED saturation-clamp
+    mutant in scripts/mutants.txt).
+    """
     acc = (qw["w_spread"] * r["spread"]
            + qw["w_imbalance"] * r["imbalance"]
            + qw["w_momentum"] * r["momentum"])

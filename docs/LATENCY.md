@@ -33,7 +33,7 @@ than restated.
 |---|---|---|
 | Full chain, decoder to risk gate, 2000 events mixing in-order, gapped, stale and malformed beats, `m_ready` high throughout | every event 8 cycles: min = mean = max | `results/sim/tb_fixed_latency.txt`, histogram in `results/sim/analyze_latency.txt` |
 | The same trace under the two committed policies | identical histograms, all 2000 events at 8 cycles under each, while 1188 decisions differ | `results/sim/tb_policy_configs.txt` |
-| The synthesizable Basys 3 top: three replays of the on-chip trace, one interrupted by a reset mid-replay | every event handed off, including those in flight before the reset, at 8 cycles | `results/sim/tb_market_pipeline_top.txt` |
+| The synthesizable Basys 3 top: four replays of the on-chip trace, the third interrupted by a reset | every event that reached the output took 8 cycles: 7000 events, including the 1000 handed off before the reset. Events still in flight when reset is asserted are discarded by it and not counted | `results/sim/tb_market_pipeline_top.txt` |
 | Per stage, as a property | `a_fixed_latency`: the event accepted at T is the one presenting at T + `LATENCY`, bound to each of the six stages | `tb/assertions.sv`, `tb/bind_assertions.sv` |
 
 The stimulus deliberately includes malformed and out-of-sequence events: those
@@ -54,13 +54,12 @@ bit into the stall path is killed by it (`scripts/mutants.txt`, `cfg-indep`).
 
 ## In nanoseconds
 
-The board clock is a fixed 100 MHz oscillator with no MMCM
-(`constraints/target_board.xdc`), so the only legitimate conversion is
-arithmetic: `LATENCY_CYCLES` × 10.000 ns = 80 ns, from `rtl/market_pkg.sv` and
+The board clock (`constraints/target_board.xdc`) is a fixed 100 MHz oscillator
+with no MMCM, so the only legitimate conversion is arithmetic:
+`LATENCY_CYCLES` × 10.000 ns = 80 ns, from `rtl/market_pkg.sv` and
 `constraints/target_board.xdc`.
 
 That figure is **not** a wall-clock measurement. It counts the pipeline only:
 events come from an on-chip ROM, so it includes no input interface, no network,
-and nothing outside the six stages. A measured Fmax above 100 MHz
-(`docs/TIMING_CLOSURE.md`) does not shorten it on this board, because the board
-has no faster clock.
+and nothing outside the six stages. A measured Fmax (`docs/TIMING_CLOSURE.md`) above 100 MHz
+does not shorten it on this board, because the board has no faster clock.

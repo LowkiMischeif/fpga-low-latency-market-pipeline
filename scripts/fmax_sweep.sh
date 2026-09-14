@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# fmax_sweep.sh -- measure the fastest clock period that closes timing.
+# fmax_sweep.sh -- find the fastest clock period that closes, one run per period.
 #
 # Coarse steps of 1.0 ns down from 10.0 until a run fails the build gate, then
 # bisection on a 0.1 ns grid between the last pass and the first fail. Every

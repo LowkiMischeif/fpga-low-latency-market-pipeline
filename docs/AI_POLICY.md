@@ -21,14 +21,15 @@ Formats, all from `rtl/market_pkg.sv`:
 |---|---|---|
 | `w_spread`, `w_imbalance`, `w_momentum` | signed Q3.12 | `W_W`, `W_FRAC_W` |
 | `w0` | signed integer, score units | `W_W` |
-| `theta_buy`, `theta_sell`, score | signed integer, saturating | `SCORE_W` |
+| `theta_buy`, `theta_sell`, score | signed integer; the score's accumulation saturates | `SCORE_W` |
 | spread, momentum | signed, Q14.2 ticks | `SPREAD_W`, `MOM_W`, `PRICE_FRAC_W` |
 | imbalance | signed Q1.14 | `IMB_W`, `IMB_FRAC_W` |
 
 The features keep their natural units and each weight absorbs the scaling, so the
-datapath has no normalising divide or shift. Every accumulation saturates
-(`score_sat_add` in `rtl/market_pkg.sv`): a wrapped sum would turn a strong sell
-into a strong buy.
+datapath has no normalising divide or shift. The weighted sum is computed wide
+enough that it cannot wrap and is then saturated to `SCORE_W` (`score_sat_add`
+in `rtl/market_pkg.sv`): a wrapped score would turn a strong sell into a strong
+buy.
 
 ## Where the weights come from
 
@@ -36,8 +37,11 @@ into a strong buy.
 and the two thresholds, scored on a replay of a generated trace.
 
 - **The search scores quantised candidates.** Each draw is rounded to the formats
-  above before it is scored, and scored with a bit-exact integer mirror of the RTL
-  (`rtl_score` and `decide` in `scripts/train_policy.py`). A float search quantised
+  above before it is scored, and scored with an integer mirror of the RTL
+  (`rtl_score` and `decide` in `scripts/train_policy.py`). The mirror does not
+  saturate; it agrees with the RTL because the score cannot reach the `SCORE_W`
+  rail at these widths, which is also why no saturation-clamp mutant is listed in
+  `scripts/mutants.txt`. A float search quantised
   afterwards could pick a policy whose hardware twin behaves differently.
 - **The feature model mirrors `rtl/feature_engine.sv`**, including the reciprocal
   table used for imbalance, so a weight sees offline the numbers it will see in
