@@ -1,0 +1,97 @@
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2026.1 (lin64) Build 6511674 Tue Jun 16 11:01:26 MDT 2026
+| Date         : Sun Sep 13 19:59:34 2026
+| Host         : Loki running 64-bit Ubuntu 26.04 LTS
+| Command      : report_timing -sort_by group -max_paths 20 -path_type summary -file /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/iter1/build/iter1_100mhz/reports/post_route_timing_paths.rpt
+| Design       : market_pipeline_top
+| Device       : 7a35t-cpg236
+| Speed File   : -1  PRODUCTION 1.23 2018-06-13
+| Design State : Routed
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Timing Report
+
+Startpoint                     Endpoint                       Slack(ns)     
+----------------------------------------------------------------------------
+u_pol/m_decision_reg[0]/C      u_risk/position_reg[21]/D      -0.071        
+u_pol/m_decision_reg[0]/C      u_risk/position_reg[17]/D      0.052         
+u_pol/m_decision_reg[0]/C      u_risk/position_reg[20]/D      0.092         
+u_pol/m_decision_reg[0]/C      u_risk/position_reg[23]/D      0.134         
+u_seq/m_event_reg[symbol][1]_rep/C
+                               u_tob/book_reg[9][bid_price][5]/D
+                                                              0.165         
+u_seq/m_event_reg[symbol][1]_rep/C
+                               u_tob/book_reg[10][bid_price][4]/D
+                                                              0.173         
+u_seq/m_event_reg[symbol][1]_rep/C
+                               u_tob/book_reg[1][bid_price][10]/D
+                                                              0.195         
+u_seq/m_event_reg[symbol][1]_rep/C
+                               u_tob/book_reg[3][bid_price][10]/D
+                                                              0.207         
+u_pol/m_decision_reg[0]/C      u_risk/position_reg[10]/D      0.211         
+u_pol/m_decision_reg[0]/C      u_risk/position_reg[9]/D       0.211         
+u_pol/m_decision_reg[0]/C      u_risk/position_reg[16]/D      0.215         
+u_pol/m_decision_reg[0]/C      u_risk/position_reg[15]/D      0.242         
+u_seq/m_event_reg[symbol][1]_rep/C
+                               u_tob/book_reg[3][bid_price][4]/D
+                                                              0.247         
+u_seq/m_event_reg[symbol][1]_rep/C
+                               u_tob/book_reg[8][bid_price][4]/D
+                                                              0.253         
+u_seq/m_event_reg[symbol][1]_rep/C
+                               u_tob/book_reg[10][bid_price][10]/D
+                                                              0.257         
+u_seq/m_event_reg[symbol][1]_rep/C
+                               u_tob/book_reg[14][bid_price][10]/D
+                                                              0.263         
+u_seq/m_event_reg[symbol][1]_rep/C
+                               u_tob/book_reg[13][bid_price][5]/D
+                                                              0.277         
+u_seq/m_event_reg[symbol][1]_rep/C
+                               u_tob/book_reg[12][bid_price][4]/D
+                                                              0.284         
+u_seq/m_event_reg[symbol][1]_rep/C
+                               u_tob/book_reg[7][bid_price][4]/D
+                                                              0.284         
+u_pol/p_imb/CLK                u_pol/m_decision_reg[0]/D      0.285         
+u_rst/stage2_reg/C             u_cfg/policy_cfg_reg[order_qty][5]/CLR
+                                                              2.300         
+u_rst/stage2_reg/C             u_cfg/risk_cfg_reg[max_long][3]/CLR
+                                                              2.300         
+u_rst/stage2_reg/C             u_cfg/risk_cfg_reg[max_short][0]/CLR
+                                                              2.300         
+u_rst/stage2_reg/C             u_cfg/risk_cfg_reg[max_short][2]/CLR
+                                                              2.300         
+u_rst/stage2_reg/C             u_cfg/risk_cfg_reg[max_short][3]/CLR
+                                                              2.300         
+u_rst/stage2_reg/C             u_cfg/risk_cfg_reg[max_short][6]/CLR
+                                                              2.300         
+u_rst/stage2_reg/C             u_pol/m_decision_reg[1]/CLR    2.305         
+u_rst/stage2_reg/C             u_pol/rc_1_reg[max_long][2]/CLR
+                                                              2.305         
+u_rst/stage2_reg/C             u_pol/rc_1_reg[max_long][5]/CLR
+                                                              2.305         
+u_rst/stage2_reg/C             u_pol/rc_1_reg[max_short][2]/CLR
+                                                              2.305         
+u_rst/stage2_reg/C             u_pol/m_risk_cfg_reg[max_long][8]/CLR
+                                                              2.428         
+u_rst/stage2_reg/C             u_pol/m_risk_cfg_reg[max_short][0]/CLR
+                                                              2.428         
+u_rst/stage2_reg/C             u_pol/m_risk_cfg_reg[max_short][3]/CLR
+                                                              2.428         
+u_rst/stage2_reg/C             u_pol/oq_1_reg[5]/CLR          2.428         
+u_rst/stage2_reg/C             u_pol/m_order_qty_reg[1]/CLR   2.433         
+u_rst/stage2_reg/C             u_pol/m_order_qty_reg[4]/CLR   2.433         
+u_rst/stage2_reg/C             u_pol/m_risk_cfg_reg[max_long][3]/CLR
+                                                              2.433         
+u_rst/stage2_reg/C             u_pol/m_risk_cfg_reg[max_short][2]/CLR
+                                                              2.433         
+u_rst/stage2_reg/C             u_pol/m_risk_cfg_reg[max_short][5]/CLR
+                                                              2.433         
+u_rst/stage2_reg/C             u_pol/rc_1_reg[max_short][5]/CLR
+                                                              2.433         
+
+
+
