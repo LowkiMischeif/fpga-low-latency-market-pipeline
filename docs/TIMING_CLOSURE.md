@@ -103,11 +103,19 @@ sums, which at `POS_W` is the same value as the previous `position ± qty`, and
 each limit compare reads exactly the sum the previous code selected for that
 decision. That is the argument that no decision, reason or position changes.
 
-The committed evidence is narrower: `tb/tb_risk_gate.sv`,
-`tb/tb_market_pipeline_top.sv` and the `risk:` mutants in `scripts/mutants.txt`,
-four of them added for the new sums, all pass on `1dfcba9` (`results/sim/`). No
-simulation comparing the old and new RTL is committed, so equivalence rests on
-the argument above.
+The committed evidence is `tb/tb_risk_gate_equiv.sv`. It holds
+`rtl/risk_gate.sv` exactly as it was before this change (at `57fd22d`, renamed),
+drives that copy and the committed module with identical, protocol-legal
+stimulus, and requires every output and the position to agree on every cycle.
+Over 62373 accepted events and 129336 compared cycles there were 0 mismatches
+(`results/sim/tb_risk_gate_equiv.txt`). Its coverage floors were met near both
+limits: 348 events within one maximum order of the long limit and 567 of the
+short limit, 116 buys whose sum exceeds 2**23−1, and 931 `RSN_MAX_LONG` and 1476
+`RSN_MAX_SHORT` decisions. A third copy with a planted off-by-one in its
+long-limit check was detected, so the comparison is not vacuous.
+`tb/tb_risk_gate.sv`, `tb/tb_market_pipeline_top.sv` and the `risk:` mutants,
+four of them added for the new sums, also pass. The comparison covers the
+stimulus above; it is a simulation, not a formal equivalence proof.
 
 ### After — `results/100mhz/`
 

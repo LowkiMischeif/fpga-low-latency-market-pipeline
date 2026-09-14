@@ -44,6 +44,7 @@ agree (spec §6.1). Four things stand against that:
 | `tb/tb_book_features.sv` | Randomized integrated replay through book and features against a reference model, with coverage floors; also replays a generated trace. |
 | `tb/tb_policy_engine.sv` | Score arithmetic, and the per-event configuration snapshot under changes after accept, back-to-back accepts and a stall holding an event inside the snapshot stage. |
 | `tb/tb_risk_gate.sv` | Every limit and reason code, position arithmetic at the width limit, the spread guard's empty-book qualification. |
+| `tb/tb_risk_gate_equiv.sv` | The committed `risk_gate` against a verbatim copy of it from before critical-path iteration 2: identical protocol-legal stimulus, every output and the position compared on every cycle, coverage floors near both limits, and a planted off-by-one in a third copy that must be detected. |
 | `tb/tb_config_regs.sv` | Writes stay in the shadow until commit; a batch lands on one edge. |
 | `tb/tb_fixed_latency.sv` | End-to-end latency, every event, across all six stages. See `docs/LATENCY.md`. |
 | `tb/tb_policy_configs.sv` | Two committed policies: different decisions, identical latency; a commit mid-stream never produces a decision matching neither. |

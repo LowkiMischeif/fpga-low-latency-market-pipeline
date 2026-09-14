@@ -60,7 +60,7 @@ iterations; `docs/ARCHITECTURE.md`, `docs/LATENCY.md`, `docs/VERIFICATION.md`,
 |---|---|
 | Top level vs the verified pipeline | 6000 decisions matched, 7000 events at 8 cycles across a mid-replay reset — `results/sim/tb_market_pipeline_top.txt` |
 | Latency | 8 cycles for all 2000 events; identical under both policies — `results/sim/analyze_latency.txt`, `results/sim/analyze_latency_configs.txt` |
-| Simulation and Python at `1dfcba9` | sim-all: 17 testbenches plus the generated-trace replay; pytest 56 passed — `results/sim/sim_all.txt`, `results/sim/pytest.txt` |
+| Simulation and Python | sim-all: 18 testbenches plus the generated-trace replay, including `tb_risk_gate_equiv` (0 mismatches against the pre-change `risk_gate`); pytest — `results/sim/sim_all.txt`, `results/sim/tb_risk_gate_equiv.txt`, `results/sim/pytest.txt`, commit in `results/sim/SOURCE.txt` |
 | Post-route timing at 100 MHz | setup WNS +0.250 ns, hold WHS +0.122 ns, 0 DRC errors — `results/100mhz/BUILD_SCOPE.md` |
 | Measured Fmax | 106.4 MHz at 9.4 ns: the fastest passing period of the sweep, not a ceiling, and not usable on the board — `results/sweep/FMAX.md` |
 | Mutation testing | 87 of 87 killed, 0 survived — `results/sim/mutation.txt` |
@@ -72,10 +72,6 @@ iterations; `docs/ARCHITECTURE.md`, `docs/LATENCY.md`, `docs/VERIFICATION.md`,
 - **Oscillator jitter is not modelled.** Slack is optimistic by the real jitter.
 - **Latency under backpressure is not claimed.** Inside the Basys 3 top the
   output is never stalled, so the fixed-latency condition always holds there.
-- **No committed equivalence check for the `risk_gate` restructure.** The
-  argument is in `docs/TIMING_CLOSURE.md`; the evidence is that every testbench
-  and mutant passes on the new RTL. A reviewer's differential simulation found no
-  mismatch, but it lives only in scratch.
 - `train_policy.py` trains on `generate_events` traces while
   `tb_policy_configs` builds its own ladder stimulus. Different distributions;
   still true from #7.

@@ -33,6 +33,20 @@ on-chip ROM. The measured Fmax is higher than the board can use, because the
 Basys 3 has no faster clock and this design has no MMCM; see
 [docs/TIMING_CLOSURE.md](docs/TIMING_CLOSURE.md) for why it is not a ceiling.
 
+## Not done
+
+- **Never run on hardware.** No bitstream from this repository has been loaded
+  onto a board; every result above is simulation or post-route analysis.
+- **The measured Fmax is a floor, not a ceiling.** It is the fastest period a
+  one-run-per-period sweep passed, and tighter targets routed faster than the
+  passing run ([docs/TIMING_CLOSURE.md](docs/TIMING_CLOSURE.md)).
+- **No MMCM.** The Basys 3 oscillator is fixed at 100 MHz, so 10.000 ns is the
+  only period this design can run at on the board.
+- **The top-level skeptic review ran after the commit it reviewed.** The
+  integration top was committed before `rtl-skeptic-reviewer` saw it, against
+  this repository's workflow; its findings were fixed in later commits
+  ([docs/STATUS.md](docs/STATUS.md)).
+
 ## What "AI" means here
 
 Offline-tuned fixed-point weights, loaded as configuration: a seeded search over
