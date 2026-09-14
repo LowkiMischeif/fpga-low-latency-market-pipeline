@@ -1,0 +1,114 @@
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2026.1 (lin64) Build 6511674 Tue Jun 16 11:01:26 MDT 2026
+| Date         : Sun Sep 13 20:16:44 2026
+| Host         : Loki running 64-bit Ubuntu 26.04 LTS
+| Command      : report_timing -sort_by group -max_paths 20 -path_type summary -file /home/lokibuns/fpga-low-latency-market-pipeline/build/100mhz/reports/post_route_timing_paths.rpt
+| Design       : market_pipeline_top
+| Device       : 7a35t-cpg236
+| Speed File   : -1  PRODUCTION 1.23 2018-06-13
+| Design State : Routed
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Timing Report
+
+Startpoint                     Endpoint                       Slack(ns)     
+----------------------------------------------------------------------------
+u_seq/m_event_reg[symbol][1]_rep/C
+                               u_tob/book_reg[4][bid_price][13]/D
+                                                              0.250         
+u_seq/m_event_reg[symbol][1]_rep/C
+                               u_tob/book_reg[3][bid_price][13]/D
+                                                              0.255         
+u_seq/m_event_reg[symbol][1]_rep/C
+                               u_tob/book_reg[6][bid_price][13]/D
+                                                              0.282         
+u_seq/m_event_reg[symbol][1]_rep/C
+                               u_tob/book_reg[9][bid_price][13]/D
+                                                              0.296         
+u_seq/m_event_reg[symbol][1]_rep/C
+                               u_tob/book_reg[14][bid_price][13]/D
+                                                              0.297         
+u_seq/m_event_reg[symbol][1]_rep/C
+                               u_tob/book_reg[7][bid_price][13]/D
+                                                              0.312         
+u_seq/m_event_reg[symbol][1]_rep/C
+                               u_tob/book_reg[11][bid_price][13]/D
+                                                              0.315         
+u_seq/m_event_reg[symbol][1]_rep/C
+                               u_tob/book_reg[1][bid_price][13]/D
+                                                              0.327         
+u_seq/m_event_reg[symbol][1]_rep/C
+                               u_tob/book_reg[7][bid_qty][1]/D
+                                                              0.331         
+u_seq/m_event_reg[symbol][1]_rep/C
+                               u_tob/book_reg[11][bid_qty][0]/D
+                                                              0.336         
+u_seq/m_event_reg[symbol][1]_rep/C
+                               u_tob/book_reg[8][bid_qty][4]/D
+                                                              0.339         
+u_seq/m_event_reg[symbol][1]_rep/C
+                               u_tob/book_reg[15][bid_price][13]/D
+                                                              0.359         
+u_seq/m_event_reg[symbol][1]_rep/C
+                               u_tob/book_reg[13][bid_price][13]/D
+                                                              0.376         
+u_seq/m_event_reg[symbol][1]_rep/C
+                               u_tob/book_reg[8][bid_qty][9]/D
+                                                              0.426         
+u_seq/m_event_reg[symbol][1]_rep/C
+                               u_tob/book_reg[7][bid_price][12]/D
+                                                              0.428         
+u_seq/m_event_reg[symbol][1]_rep/C
+                               u_tob/m_book_reg[bid_price][12]/D
+                                                              0.428         
+u_seq/m_event_reg[symbol][1]_rep/C
+                               u_tob/book_reg[10][bid_price][13]/D
+                                                              0.430         
+u_seq/m_event_reg[symbol][1]_rep/C
+                               u_tob/book_reg[6][bid_qty][9]/D
+                                                              0.465         
+u_seq/m_event_reg[symbol][1]_rep/C
+                               u_tob/book_reg[13][bid_qty][4]/D
+                                                              0.470         
+u_seq/m_event_reg[symbol][1]_rep/C
+                               u_tob/m_book_reg[bid_qty][0]/D 0.483         
+u_rst/stage2_reg/C             u_cfg/sh_policy_reg[order_qty][11]/CLR
+                                                              2.515         
+u_rst/stage2_reg/C             u_cfg/sh_policy_reg[order_qty][4]/CLR
+                                                              2.515         
+u_rst/stage2_reg/C             u_cfg/sh_policy_reg[order_qty][7]/CLR
+                                                              2.515         
+u_rst/stage2_reg/C             rej_cnt_reg[4]/CLR             2.601         
+u_rst/stage2_reg/C             rej_cnt_reg[5]/CLR             2.601         
+u_rst/stage2_reg/C             rej_cnt_reg[6]/CLR             2.601         
+u_rst/stage2_reg/C             rej_cnt_reg[7]/CLR             2.601         
+u_rst/stage2_reg/C             u_cfg/risk_cfg_reg[max_order_qty][0]/CLR
+                                                              2.744         
+u_rst/stage2_reg/C             u_cfg/risk_cfg_reg[max_order_qty][14]/CLR
+                                                              2.744         
+u_rst/stage2_reg/C             u_cfg/risk_cfg_reg[max_order_qty][15]/CLR
+                                                              2.744         
+u_rst/stage2_reg/C             u_cfg/risk_cfg_reg[max_order_qty][4]/CLR
+                                                              2.744         
+u_rst/stage2_reg/C             u_cfg/risk_cfg_reg[max_order_qty][5]/CLR
+                                                              2.744         
+u_rst/stage2_reg/C             u_cfg/sh_risk_reg[max_order_qty][5]/CLR
+                                                              2.788         
+u_rst/stage2_reg/C             u_cfg/policy_cfg_reg[order_qty][0]/CLR
+                                                              2.795         
+u_rst/stage2_reg/C             u_cfg/policy_cfg_reg[order_qty][1]/CLR
+                                                              2.795         
+u_rst/stage2_reg/C             u_cfg/policy_cfg_reg[order_qty][2]/CLR
+                                                              2.795         
+u_rst/stage2_reg/C             u_cfg/risk_cfg_reg[max_order_qty][1]/CLR
+                                                              2.795         
+u_rst/stage2_reg/C             u_cfg/sh_risk_reg[max_order_qty][0]/CLR
+                                                              2.830         
+u_rst/stage2_reg/C             u_cfg/sh_risk_reg[max_order_qty][14]/CLR
+                                                              2.830         
+u_rst/stage2_reg/C             u_cfg/sh_risk_reg[max_order_qty][15]/CLR
+                                                              2.830         
+
+
+

@@ -4,32 +4,39 @@ Written for Tyler returning to the project. Updated 2026-09-13.
 
 ## The three things to look at first
 
-1. **Merge order: #6 then #7.** `feat/policy-risk` is *stacked* on
-   `fix/generator-and-gating`, because it needs that branch's book-capable
-   generator. PR #7's diff will shrink to just the policy/risk commits once #6
-   lands. Neither is merged; I have merged nothing.
+1. **The reciprocal "ROM" in `feature_engine` was a 32-bit divider, and no
+   simulation could have shown it.** `recip1 = recip_rom(idx1)` called the
+   package's constant function on a live index, so synthesis built the function
+   body: WNS −73.898 ns at 100 MHz, 196 logic levels
+   (`results/iter0_100mhz/GATE_FAILED.md`). Every testbench and mutant passed
+   throughout, because the arithmetic was right. It took the first real build to
+   find, and a second latency-neutral iteration in `risk_gate` to close timing.
+   The whole trail is in `docs/TIMING_CLOSURE.md`.
 
-2. **A false claim shipped in a committed artifact and I did not catch it —
-   the skeptic did.** `tuned.json`/`tuned.cfg` said "from
-   `scripts/train_policy.py --seed 7`" and were hand-picked values that
-   `random.uniform` cannot produce. `STATUS.md` said so honestly while the
-   artifact the testbench reads said otherwise. It is fixed — the trainer now
-   emits a complete policy, `tuned.json` is regenerated from a real run, and a
-   test reruns the command in its own note — but the near-miss is worth your
-   eye, because it was in the one piece of evidence this project is named for.
+2. **I committed the integration top (now `2f00873`) before its skeptic
+   review, against the CLAUDE.md workflow.** The review, run afterwards, found
+   four MAJOR problems, all fixed in later commits on the branch:
+   - button bounce on release started a second replay;
+   - the build gate's pulse-width check could never fail, yet every build
+     record said "pulse-width clean";
+   - a failed or aborted build left an earlier passing result in `results/`;
+   - the first "before" record was built from a scratch tree that no longer
+     existed.
 
-3. **`cfg_boundary` is gone, and the mutation harness had a hole.** The
-   deletion is on `fix/drop-cfg-boundary`. Its review found the snapshot claim
-   was asserted but not actually pinned — 9 of 10 "read the live config"
-   mutants survived — so `tb_policy_engine` now tests it directly. Fixing that
-   exposed a worse problem: `mutate.sh` scored a testbench that did not even
-   elaborate as a kill for every mutant aimed at it. It now runs each
-   testbench unmutated first and aborts if any fails.
+   A later review of the docs found the same kind of flaw in the first version
+   of `scripts/test_readme_citations.py`: it passed with a wrong WNS in the
+   README. It now compares every results cell exactly with its linked file.
+   Worth your eye because checks that cannot fail are the failure mode this
+   project keeps meeting.
 
-**Merge order: #6, then #7, then the `cfg_boundary` PR.** As of 2026-09-13
-none of the three is merged; `main` is still at `ff6350d`.
+3. **#7 and #8 were rebased and force-pushed before merging.** After #6 was
+   squash-merged, #7 conflicted in `scripts/mutate.sh` because its branch still
+   carried #6's individual commits. As you directed, each branch was rebased onto
+   `main` with `--onto`, dropping the already-merged commits; before each
+   `--force-with-lease` push the rebased tree was confirmed identical to the
+   reviewed PR head (`git diff` empty), and CI was green before each merge.
 
-## Merged on `main`
+## Merged on `main` (at `cd3065e`)
 
 | PR | What |
 |---|---|
@@ -38,74 +45,59 @@ none of the three is merged; `main` is still at `ff6350d`.
 | #3 | `event_decoder`, `sequence_checker` — 2-cycle proven latency |
 | #4 | `make lint-tb` in CI, `make sim-all`, reset-convention fix |
 | #5 | `top_of_book`, `feature_engine` — 5-cycle proven latency |
+| #6 | Generator reaches the book, one feature gating rule, `MOMENTUM_LAG` deleted |
+| #7 | `policy_engine`, `risk_gate`, `config_regs`, policy tooling — 8-cycle latency |
+| #8 | `cfg_boundary` deleted; per-event snapshot pinned; `mutate.sh` baseline gate |
 
-`main` is at `ff6350d`. I have not touched it.
+## Open: the pull request for `feat/integration-timing`
 
-## Open, all three yours to merge
-
-**PR #6 — `fix/generator-and-gating`.** The three deferrals from #5: the
-generator reaches the book (cancel/trade hits 0 → 169/181), one feature gating
-rule, `MOMENTUM_LAG` deleted. CI green.
-
-**PR #7 — `feat/policy-risk`.** `policy_engine`, `risk_gate`, `config_regs`,
-the three Python tools, two committed configs, `LATENCY_CYCLES` = 8. CI green.
-Skeptic-reviewed: 1 BLOCKER and 5 MAJOR found, all fixed.
+`market_pipeline_top` for the Basys 3, with on-chip trace replay and config
+presets; the full XDC; a gated build flow and Fmax sweep; two critical-path
+iterations; `docs/ARCHITECTURE.md`, `docs/LATENCY.md`, `docs/VERIFICATION.md`,
+`docs/TIMING_CLOSURE.md`, `docs/AI_POLICY.md`; the README.
 
 | Check | Result |
 |---|---|
-| `make lint` / `make lint-tb` | clean / clean (12 testbenches) |
-| `pytest` | 50 passed |
-| `make sim-all` | 12/12 plus generated-trace replay |
-| `./scripts/mutate.sh` | **47 mutants, 47 killed** (as of #7) |
-| Latency | min = mean = max = **8 cycles** over 2000 events |
-| Two configs | 839 vs 1485 trades, 1188/2000 decisions differ, histograms identical |
-| Mid-stream commit | 1371 under A, 1441 under B, **0 split** |
-
-**PR #8 — `fix/drop-cfg-boundary`.** Deletes `cfg_boundary`; the per-event
-snapshot in `policy_engine` is the atomicity mechanism, now pinned by directed
-tests in `tb_policy_engine`. `mutate.sh` gained a baseline gate (exit 2 if a
-testbench fails unmutated), scores a mutant that does not compile as
-`DOES NOT BUILD` rather than a kill, and exits 3 when a filter matches nothing.
-Three skeptic rounds; the third approved with nits only.
-`./scripts/mutate.sh`: **49 mutants, 49 killed**.
-
-## What the reviewer found in #7, in case you only read one thing
-
-- **`risk_gate` failed open.** `next_pos` wrapped at `POS_W`, so a large limit
-  plus a large order allowed a trade that should have been refused. Reachable
-  through the supported config path. A risk gate that fails open is the one
-  failure mode that module exists to prevent.
-- **The reason codes did not implement their own purpose.** Every HOLD was
-  labelled a suppressed trade (`hold=1619 rejected=1618`). Now 1027.
-- **`risk_cfg` was not snapshotted**, so a commit applied new limits to a score
-  computed under old weights.
+| Top level vs the verified pipeline | 6000 decisions matched, 7000 events at 8 cycles across a mid-replay reset — `results/sim/tb_market_pipeline_top.txt` |
+| Latency | 8 cycles for all 2000 events; identical under both policies — `results/sim/analyze_latency.txt`, `results/sim/analyze_latency_configs.txt` |
+| Simulation and Python | sim-all: 18 testbenches plus the generated-trace replay, including `tb_risk_gate_equiv` (0 mismatches against the pre-change `risk_gate`); pytest — `results/sim/sim_all.txt`, `results/sim/tb_risk_gate_equiv.txt`, `results/sim/pytest.txt`, commit in `results/sim/SOURCE.txt` |
+| Post-route timing at 100 MHz | setup WNS +0.250 ns, hold WHS +0.122 ns, 0 DRC errors — `results/100mhz/BUILD_SCOPE.md` |
+| Measured Fmax | 106.4 MHz at 9.4 ns: the fastest passing period of the sweep, not a ceiling, and not usable on the board — `results/sweep/FMAX.md` |
+| Mutation testing | 87 of 87 killed, 0 survived — `results/sim/mutation.txt` |
 
 ## Not done
 
-- `market_pipeline_top` and the whole integration stage: synthesis, timing
-  closure, the five `docs/*.md`, the README.
-- **No numbers have been published to a README. There is no README.** The 80 ns
-  figure is arithmetic on the oscillator and the testbench log now says so in
-  as many words.
-- Reset asserted mid-flight is covered per-module, not through the integrated
-  chain.
+- **Nothing has run on a board.** Every result is simulation or post-route
+  analysis, and the README says so.
+- **Oscillator jitter is not modelled.** Slack is optimistic by the real jitter.
+- **Latency under backpressure is not claimed.** Inside the Basys 3 top the
+  output is never stalled, so the fixed-latency condition always holds there.
 - `train_policy.py` trains on `generate_events` traces while
-  `tb_policy_configs` builds its own ladder stimulus. The trained policy does
-  trade well on both, but they are different distributions and it would be
-  better if they were not.
+  `tb_policy_configs` builds its own ladder stimulus. Different distributions;
+  still true from #7.
 
 ## Decisions I made alone that you may want to overturn
 
-- **Q3.12 weights, `SCORE_W = 32`.** Weights carry all the feature scaling, so
-  `w_spread = 1.0` means "one score unit per tick" — correct but unintuitive.
-- **`order_qty` comes from config**, and `risk_gate` checks it against
-  `max_order_qty`. That is a misconfiguration guard, not market-aware sizing.
-- **The training objective is synthetic** and documented as such: it rewards
-  agreement with the next midprice move and penalises churn. It separates
-  policies; it does not value them. Nothing claims profitability.
-- **Baseline is hand-chosen, not trained**, and says so. It exists to be a
-  different policy on a different signal, which is a stronger demonstration
-  than two tuner outputs that happen to differ.
-- **Two mutants are deliberately absent** from the suite with written reasons:
-  the policy saturation clamp and the spread guard's `!book_empty`
-  qualification. Both are unkillable for structural reasons, not weak tests.
+- **No I/O delays.** Every button, switch, LED and display pin is
+  `set_false_path` with the reason in the XDC, per the approved integration spec.
+  If a future board has a real data interface, it will need real I/O constraints.
+- **Two latency-neutral timing fixes, no implementation directives.** Both
+  iterations changed RTL structure (constant table and constant shift in
+  `feature_engine`; precomputed sums in `risk_gate`) rather than turning on
+  Vivado's aggressive directives, so the result does not rely on non-default
+  directives. It still depends on the tool version and placement.
+- **`busy` from the config loader includes a load that is due**, and a load
+  waits for a running replay. A switch change takes effect only after the replay
+  ends.
+- **Two more mutants were moved to NOT LISTED**, each with the argument written
+  in `scripts/mutants.txt`: a level-sensitive button press, which the fixes
+  above made equivalent, and a one-cycle "busy gap", which now only starts a
+  second load a cycle later — observable, but required by nothing. That makes
+  four with the two from #7 (policy saturation clamp, spread guard
+  qualification); all four are listed in `docs/VERIFICATION.md`.
+- **Failing builds are kept as records.** `PUBLISH_FAILED=1` publishes a failing
+  run as `GATE_FAILED.md`; the two "before" records are committed that way.
+- **An accidental full build ran once.** An unquoted empty Makefile argument
+  shifted the run name to `0` during a guard test; it was killed before it
+  published anything, and the Makefile now quotes its arguments and `build.tcl`
+  refuses any argument count but 0 or 4.

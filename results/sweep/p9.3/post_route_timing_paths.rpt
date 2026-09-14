@@ -1,0 +1,105 @@
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2026.1 (lin64) Build 6511674 Tue Jun 16 11:01:26 MDT 2026
+| Date         : Sun Sep 13 20:55:18 2026
+| Host         : Loki running 64-bit Ubuntu 26.04 LTS
+| Command      : report_timing -sort_by group -max_paths 20 -path_type summary -file /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/sweepwt2/build/sweep/p9.3/reports/post_route_timing_paths.rpt
+| Design       : market_pipeline_top
+| Device       : 7a35t-cpg236
+| Speed File   : -1  PRODUCTION 1.23 2018-06-13
+| Design State : Routed
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Timing Report
+
+Startpoint                     Endpoint                       Slack(ns)     
+----------------------------------------------------------------------------
+u_seq/m_event_reg[symbol][0]_rep__0/C
+                               u_tob/book_reg[5][ask_price][10]/D
+                                                              -0.139        
+u_seq/m_event_reg[symbol][0]_rep__0/C
+                               u_tob/book_reg[5][ask_price][7]/D
+                                                              -0.114        
+u_seq/m_event_reg[symbol][0]_rep__0/C
+                               u_tob/book_reg[10][ask_price][13]/D
+                                                              -0.113        
+u_seq/m_event_reg[symbol][1]_rep__0/C
+                               u_tob/book_reg[15][bid_price][7]/D
+                                                              -0.099        
+u_seq/m_event_reg[symbol][0]_rep__0/C
+                               u_tob/book_reg[2][ask_price][10]/D
+                                                              -0.094        
+u_seq/m_event_reg[symbol][1]_rep__0/C
+                               u_tob/book_reg[10][bid_price][1]/D
+                                                              -0.073        
+u_seq/m_event_reg[symbol][0]_rep__0/C
+                               u_tob/book_reg[14][ask_price][13]/D
+                                                              -0.068        
+u_seq/m_event_reg[symbol][1]_rep__0/C
+                               u_tob/book_reg[1][bid_price][4]/D
+                                                              -0.064        
+u_seq/m_event_reg[symbol][0]_rep__0/C
+                               u_tob/book_reg[5][ask_price][13]/D
+                                                              -0.056        
+u_seq/m_event_reg[symbol][0]_rep__0/C
+                               u_tob/book_reg[1][ask_price][10]/D
+                                                              -0.043        
+u_seq/m_event_reg[symbol][0]_rep__0/C
+                               u_tob/book_reg[2][ask_price][13]/D
+                                                              -0.043        
+u_seq/m_event_reg[symbol][1]_rep__0/C
+                               u_tob/book_reg[11][bid_price][2]/D
+                                                              -0.040        
+u_seq/m_event_reg[symbol][1]_rep__0/C
+                               u_tob/book_reg[6][bid_price][0]/D
+                                                              -0.039        
+u_seq/m_event_reg[symbol][1]_rep__0/C
+                               u_tob/book_reg[11][bid_price][3]/D
+                                                              -0.035        
+u_seq/m_event_reg[symbol][1]_rep__0/C
+                               u_tob/book_reg[13][bid_price][0]/D
+                                                              -0.032        
+u_seq/m_event_reg[symbol][0]_rep__0/C
+                               u_tob/book_reg[1][ask_price][13]/D
+                                                              -0.026        
+u_seq/m_event_reg[symbol][0]_rep__0/C
+                               u_tob/book_reg[2][ask_price][5]/D
+                                                              -0.022        
+u_seq/m_event_reg[symbol][1]_rep/C
+                               u_tob/book_reg[15][bid_price][11]/D
+                                                              -0.019        
+u_seq/m_event_reg[symbol][0]_rep__0/C
+                               u_tob/book_reg[0][ask_price][7]/D
+                                                              -0.012        
+u_seq/m_event_reg[symbol][0]_rep__0/C
+                               u_tob/book_reg[8][ask_price][4]/D
+                                                              -0.010        
+u_rst/stage2_reg/C             u_tob/book_reg[2][ask_qty][1]/CLR
+                                                              3.797         
+u_rst/stage2_reg/C             u_tob/book_reg[2][ask_qty][4]/CLR
+                                                              3.797         
+u_rst/stage2_reg/C             u_tob/book_reg[2][bid_qty][1]/CLR
+                                                              3.797         
+u_rst/stage2_reg/C             u_feat/prev_mid_reg[10][0]/CLR 3.882         
+u_rst/stage2_reg/C             u_feat/prev_mid_reg[10][1]/CLR 3.882         
+u_rst/stage2_reg/C             u_feat/prev_mid_reg[10][2]/CLR 3.882         
+u_rst/stage2_reg/C             u_feat/prev_mid_reg[10][3]/CLR 3.882         
+u_rst/stage2_reg/C             u_feat/prev_mid_reg[10][4]/CLR 3.882         
+u_rst/stage2_reg/C             u_feat/prev_mid_reg[10][5]/CLR 3.882         
+u_rst/stage2_reg/C             u_feat/prev_mid_reg[10][6]/CLR 3.882         
+u_rst/stage2_reg/C             u_tob/book_reg[7][ask_qty][4]/CLR
+                                                              3.883         
+u_rst/stage2_reg/C             u_tob/book_reg[7][bid_qty][1]/CLR
+                                                              3.883         
+u_rst/stage2_reg/C             u_feat/prev_mid_reg[9][1]/CLR  3.886         
+u_rst/stage2_reg/C             u_feat/prev_mid_reg[9][4]/CLR  3.886         
+u_rst/stage2_reg/C             u_feat/prev_mid_reg[9][5]/CLR  3.886         
+u_rst/stage2_reg/C             u_feat/prev_mid_reg[6][13]/CLR 3.936         
+u_rst/stage2_reg/C             u_feat/prev_mid_reg[6][15]/CLR 3.936         
+u_rst/stage2_reg/C             u_feat/prev_mid_reg[6][8]/CLR  3.936         
+u_rst/stage2_reg/C             u_feat/prev_mid_reg[2][8]/CLR  3.980         
+u_rst/stage2_reg/C             u_tob/book_reg[0][ask_qty][1]/CLR
+                                                              3.982         
+
+
+

@@ -103,14 +103,31 @@ def write_cfg(policy: dict, out: Path) -> list[tuple[str, int]]:
     return writes
 
 
+def write_mem(policy: dict, out: Path) -> None:
+    """A $readmemh image for cfg_loader: one 40-bit word per register write.
+
+    Two hex digits of address then eight of data, in the same order as the
+    .cfg file, ending with CFG_COMMIT. cfg_loader replays the words in order.
+    """
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text("".join(f"{A[n]:02x}{d:08x}\n" for n, d in build_writes(policy)))
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("policy", type=Path, help="JSON policy description")
-    p.add_argument("--out", type=Path, required=True)
+    p.add_argument("--out", type=Path)
+    p.add_argument("--mem", type=Path, help="write a cfg_loader ROM image")
     a = p.parse_args()
+    if not (a.mem or a.out):
+        p.error("give --out, --mem, or both")
     policy = json.loads(a.policy.read_text())
-    writes = write_cfg(policy, a.out)
-    print(f"wrote {len(writes)} register writes to {a.out}")
+    if a.mem:
+        write_mem(policy, a.mem)
+        print(f"wrote {a.mem}")
+    if a.out:
+        writes = write_cfg(policy, a.out)
+        print(f"wrote {len(writes)} register writes to {a.out}")
 
 
 if __name__ == "__main__":

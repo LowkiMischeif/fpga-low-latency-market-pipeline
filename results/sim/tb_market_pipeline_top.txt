@@ -1,0 +1,146 @@
+vivado -mode batch -notrace -source scripts/run_sim.tcl -tclargs tb_market_pipeline_top 
+INFO: [Common 17-3922] A valid Vivado Design Suite BASIC license has been detected. Your current license is active and will expire on 10-sep-2027.
+
+****** Vivado v2026.1 (64-bit)
+  **** SW Build 6511674 on Tue Jun 16 11:01:26 MDT 2026
+  **** IP Build 6504888 on Tue Jun 09 09:05:25 MDT 2026
+  **** SharedData Build 6501428 on Mon Jun 08 17:34:18 MDT 2026
+  **** Start of session at: Sun Sep 13 21:15:08 2026
+    ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+    ** Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
+
+source scripts/run_sim.tcl -notrace
+== xvlog ==
+   xvlog -sv -L uvm /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/rtl/market_pkg.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/rtl/cfg_loader.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/rtl/config_regs.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/rtl/event_decoder.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/rtl/feature_engine.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/rtl/market_pipeline_top.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/rtl/policy_engine.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/rtl/replay_ctrl.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/rtl/reset_sync.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/rtl/risk_gate.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/rtl/seg7_display.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/rtl/sequence_checker.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/rtl/top_of_book.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/rtl/trace_rom.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/assertions.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/bind_assertions.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_book_features.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_cfg_loader.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_config_regs.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_decode_validate.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_event_decoder.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_feature_engine.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_fixed_latency.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_market_pipeline_top.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_market_pkg.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_policy_configs.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_policy_engine.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_replay_ctrl.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_reset_sync.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_risk_gate.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_risk_gate_equiv.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_seg7_display.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_sequence_checker.sv /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_top_of_book.sv
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/rtl/market_pkg.sv" into library work
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/rtl/cfg_loader.sv" into library work
+INFO: [VRFC 10-311] analyzing module cfg_loader
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/rtl/config_regs.sv" into library work
+INFO: [VRFC 10-311] analyzing module config_regs
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/rtl/event_decoder.sv" into library work
+INFO: [VRFC 10-311] analyzing module event_decoder
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/rtl/feature_engine.sv" into library work
+INFO: [VRFC 10-311] analyzing module feature_engine
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/rtl/market_pipeline_top.sv" into library work
+INFO: [VRFC 10-311] analyzing module market_pipeline_top
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/rtl/policy_engine.sv" into library work
+INFO: [VRFC 10-311] analyzing module policy_engine
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/rtl/replay_ctrl.sv" into library work
+INFO: [VRFC 10-311] analyzing module replay_ctrl
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/rtl/reset_sync.sv" into library work
+INFO: [VRFC 10-311] analyzing module reset_sync
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/rtl/risk_gate.sv" into library work
+INFO: [VRFC 10-311] analyzing module risk_gate
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/rtl/seg7_display.sv" into library work
+INFO: [VRFC 10-311] analyzing module seg7_display
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/rtl/sequence_checker.sv" into library work
+INFO: [VRFC 10-311] analyzing module sequence_checker
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/rtl/top_of_book.sv" into library work
+INFO: [VRFC 10-311] analyzing module top_of_book
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/rtl/trace_rom.sv" into library work
+INFO: [VRFC 10-311] analyzing module trace_rom
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/assertions.sv" into library work
+INFO: [VRFC 10-311] analyzing module handshake_checker
+INFO: [VRFC 10-311] analyzing module stream_source_checker
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/bind_assertions.sv" into library work
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_book_features.sv" into library work
+INFO: [VRFC 10-311] analyzing module tb_book_features
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_cfg_loader.sv" into library work
+INFO: [VRFC 10-311] analyzing module tb_cfg_loader
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_config_regs.sv" into library work
+INFO: [VRFC 10-311] analyzing module tb_config_regs
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_decode_validate.sv" into library work
+INFO: [VRFC 10-311] analyzing module tb_decode_validate
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_event_decoder.sv" into library work
+INFO: [VRFC 10-311] analyzing module tb_event_decoder
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_feature_engine.sv" into library work
+INFO: [VRFC 10-311] analyzing module tb_feature_engine
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_fixed_latency.sv" into library work
+INFO: [VRFC 10-311] analyzing module tb_fixed_latency
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_market_pipeline_top.sv" into library work
+INFO: [VRFC 10-311] analyzing module tb_market_pipeline_top
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_market_pkg.sv" into library work
+INFO: [VRFC 10-311] analyzing module tb_market_pkg
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_policy_configs.sv" into library work
+INFO: [VRFC 10-311] analyzing module tb_policy_configs
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_policy_engine.sv" into library work
+INFO: [VRFC 10-311] analyzing module tb_policy_engine
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_replay_ctrl.sv" into library work
+INFO: [VRFC 10-311] analyzing module tb_replay_ctrl
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_reset_sync.sv" into library work
+INFO: [VRFC 10-311] analyzing module tb_reset_sync
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_risk_gate.sv" into library work
+INFO: [VRFC 10-311] analyzing module tb_risk_gate
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_risk_gate_equiv.sv" into library work
+INFO: [VRFC 10-311] analyzing module risk_gate_pre_iter2
+INFO: [VRFC 10-311] analyzing module tb_risk_gate_equiv
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_seg7_display.sv" into library work
+INFO: [VRFC 10-311] analyzing module tb_seg7_display
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_sequence_checker.sv" into library work
+INFO: [VRFC 10-311] analyzing module tb_sequence_checker
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_top_of_book.sv" into library work
+INFO: [VRFC 10-311] analyzing module tb_top_of_book
+== xelab ==
+   xelab -debug typical -relax -s tb_market_pipeline_top_snap tb_market_pipeline_top
+Vivado Simulator v2026.1
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
+Running: /home/lokibuns/Xilinx/2026.1/Vivado/bin/unwrapped/lnx64.o/xelab -debug typical -relax -s tb_market_pipeline_top_snap tb_market_pipeline_top 
+Multi-threading is on. Using 14 slave threads.
+WARNING: [XSIM 43-3431] One or more environment variables have been detected which affect the operation of the C compiler. These are typically not set in standard installations and are not tested by AMD, however they may be appropriate for your system, so the flow will attempt to continue.  If errors occur, try running xelab with the "-mt off -v 1" switches to see more information from the C compiler. The following environment variables have been detected:
+    LIBRARY_PATH
+Starting static elaboration
+Pass Through NonSizing Optimizer
+Completed static elaboration
+Starting simulation data flow analysis
+Completed simulation data flow analysis
+Time Resolution for simulation is 1ps
+Compiling package work.market_pkg
+Compiling module work.reset_sync
+Compiling module work.trace_rom
+Compiling module work.cfg_loader
+Compiling module work.stream_source_checker(DATA_W=64)
+Compiling module work.replay_ctrl(LOCKOUT_W=4)
+Compiling module work.handshake_checker(TAG_W=16,PAY_W...
+Compiling module work.event_decoder
+Compiling module work.sequence_checker_default
+Compiling module work.handshake_checker(TAG_W=16,PAY_W...
+Compiling module work.top_of_book
+Compiling module work.handshake_checker(LATENCY=2,TAG_...
+Compiling module work.feature_engine_default
+Compiling module work.handshake_checker(LATENCY=2,TAG_...
+Compiling module work.policy_engine_default
+Compiling module work.handshake_checker(TAG_W=16,PAY_W...
+Compiling module work.risk_gate_default
+Compiling module work.config_regs
+Compiling module work.seg7_display(REFRESH_W=4)
+Compiling module work.market_pipeline_top(LOCKOUT_W=4,...
+Compiling module work.tb_market_pipeline_top
+Built simulation snapshot tb_market_pipeline_top_snap
+== xsim ==
+   xsim tb_market_pipeline_top_snap -R --maxlogsize 64
+
+****** xsim v2026.1 (64-bit)
+  **** SW Build 6511674 on Tue Jun 16 11:01:26 MDT 2026
+  **** IP Build 6504888 on Tue Jun 09 09:05:25 MDT 2026
+  **** SharedData Build 6501428 on Mon Jun 08 17:34:18 MDT 2026
+  **** Start of session at: Sun Sep 13 21:15:13 2026
+    ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+    ** Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
+
+source xsim.dir/tb_market_pipeline_top_snap/xsim_script.tcl
+# xsim {tb_market_pipeline_top_snap} -maxlogsize 64 -autoloadwcfg -runall
+Time resolution is 1 ps
+run -all
+INFO: baseline buy=3 sell=134 rejected=29
+INFO: tuned buy=166 sell=135 rejected=54
+INFO: after mid-replay reset buy=125 sell=118 rejected=42
+INFO: top latency 7000 events, 0 not at 8 cycles (1000 handed off before the reset)
+PASS: tb_market_pipeline_top -- 6000 decisions matched the reference chain, latency 8 cycles
+$finish called at time : 133190 ns : File "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_market_pipeline_top.sv" Line 280
+exit
+INFO: xsimkernel Simulation Memory Usage: 299544 KB (Peak: 344264 KB), Simulation CPU Usage: 870 ms
+INFO: [Common 17-206] Exiting xsim at Sun Sep 13 21:15:15 2026...
+
+== sim complete: tb_market_pipeline_top ==
+INFO: [Common 17-206] Exiting Vivado at Sun Sep 13 21:15:15 2026...

@@ -1,0 +1,113 @@
+== baseline: unmutated testbenches must pass
+   tb_cfg_loader                  pass
+   tb_config_regs                 pass
+   tb_feature_engine              pass
+   tb_fixed_latency               pass
+   tb_market_pipeline_top         pass
+   tb_policy_configs              pass
+   tb_policy_engine               pass
+   tb_replay_ctrl                 pass
+   tb_reset_sync                  pass
+   tb_risk_gate                   pass
+   tb_seg7_display                pass
+   tb_top_of_book                 pass
+== top_of_book
+tob: ask better-direction flipped                    killed
+tob: qty_add does not saturate                       killed
+tob: qty_sub does not floor                          killed
+tob: zero-qty ADD guard removed                      killed
+tob: book indexed at a fixed symbol                  killed
+== feature_engine
+feat: mid not halved                                 killed
+feat: divide-by-zero not folded into empty           killed
+feat: spread back on split gating                    killed
+feat: mid back on split gating                       killed
+feat: wrong reciprocal shift                         killed
+feat: numerator not normalised                       killed
+feat: normalised numerator not sign-extended         killed
+feat: normalised numerator one bit short             killed
+feat: reciprocal table indexed off by one            killed
+feat: imbalance high clamp removed                   killed
+feat: imbalance low clamp removed                    killed
+feat: momentum ignores prev_valid                    killed
+feat: momentum history is global                     killed
+feat: stale book advances history                    killed
+== policy_engine
+pol: constant term dropped                           killed
+pol: buy comparison reversed                         killed
+pol: threshold is >= not >                           killed
+pol: scaling shift off by one                        killed
+pol: imbalance term dropped                          killed
+pol: spread term dropped                             killed
+pol: empty book still decides                        killed
+pol-snap: w0 read live                               killed
+pol-snap: theta_buy read live                        killed
+pol-snap: theta_sell read live                       killed
+pol-snap: order_qty read live                        killed
+pol-snap: snapshot reloads on every edge             killed
+pol-snap: multiplies moved to stage 2 on live weights killed
+pol-snap: risk limits read live                      killed
+== risk_gate
+risk: empty book not rejected                        killed
+risk: kill switch ignored                            killed
+risk: max long not enforced                          killed
+risk: max short not enforced                         killed
+risk: short limit compared unsigned                  killed
+risk: long limit compared unsigned                   killed
+risk: sequence flags ignored                         killed
+risk: malformed flags ignored                        killed
+risk: rejected trade still moves position            killed
+risk: SELL limit checks pos_plus                     killed
+risk: SELL position update uses pos_plus             killed
+risk: order qty sign-extended                        killed
+risk: pos_minus zero-extends position                killed
+risk: max order qty not enforced                     killed
+== config_regs
+cfg: writes go live without a commit                 killed
+cfg: commit ignores its data bit                     killed
+cfg: commit applies only the policy half             killed
+cfg: reset does not arm the kill switch              killed
+== latency and configuration independence
+lat: package claims one cycle too many               killed
+lat: policy claims one cycle too many                killed
+lat: feature_engine collapsed to one cycle           killed
+risk: position check wraps at POS_W                  killed
+risk: policy HOLD still gets a reason                killed
+cfg-indep: a config bit reaches the stall path       killed
+== reset_sync
+rst: release through one flop                        killed
+rst: synchronous assert                              killed
+== replay_ctrl
+replay: address does not run ahead                   killed
+replay: press accepted mid-replay                    killed
+replay: lockout ignored                              killed
+replay: hold_off ignored                             killed
+replay: last word dropped                            killed
+replay: stale ROM word presented before priming      killed
+replay: s_data not held while stalled                killed
+replay: last word dropped under a stall              killed
+replay: a new press does not restart idx             killed
+replay: start_pulse lasts two cycles                 killed
+replay: lockout restarts only at the press (release bounce) killed
+== cfg_loader
+cfgl: switch change does not reload                  killed
+cfgl: presets swapped                                killed
+cfgl: final write (the commit) skipped               killed
+cfgl: busy drops before the last write lands         killed
+cfgl: image read from the live switch (mixed commit) killed
+cfgl: preset follows the switch mid-load             killed
+cfgl: busy ignores a deferred load                   killed
+cfgl: load not deferred by hold_off                  killed
+== seg7_display
+seg7: digit 3 decodes as 8                           killed
+seg7: anodes 0 and 1 swapped                         killed
+seg7: scan runs at the clock rate                    killed
+== market_pipeline_top
+top: BUY and SELL counters swapped                   killed
+top: replay not held off while config loads          killed
+top: counters not cleared on a new replay            killed
+top: preset switch not wired                         killed
+top: loader not held off by a replay                 killed
+top: counters not cleared by reset                   killed
+
+killed 87, survived 0

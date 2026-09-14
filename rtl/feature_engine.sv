@@ -4,8 +4,9 @@
 // Two registered stages (LAT_FEATURE), split so the reciprocal ROM read lands
 // in the first and the multiply in the second:
 //
-//   stage 1  spread, mid, book_empty, denominator normalisation, ROM read
-//   stage 2  imbalance multiply and shift, momentum, output assembly
+//   stage 1  spread, mid, book_empty, denominator normalisation, ROM read,
+//            numerator normalisation
+//   stage 2  imbalance multiply and fixed shift, momentum, output assembly
 //
 // The pipeline has no skid buffer: both stages advance together, so a stall
 // holds the whole engine and in-flight never exceeds LAT_FEATURE.
@@ -79,6 +80,20 @@ module feature_engine
     return 0;                                  // d == 0: gated by empty1
   endfunction
 
+  // The reciprocal table, built at elaboration: every entry is a localparam,
+  // so synthesis sees 256 constants and maps a LUT ROM.
+  //
+  // This used to be `recip1 = recip_rom(idx1)`, calling the package function
+  // on the live index. Synthesis then built the function body -- a 32-bit
+  // divide -- as combinational logic, and 100 MHz failed timing by a wide
+  // margin. Same table, same values. The measured before and after are in
+  // docs/TIMING_CLOSURE.md, from results/iter0_100mhz/ and results/100mhz/.
+  logic [RECIP_W-1:0] recip_tab [RECIP_ROM_N];
+  for (genvar gi = 0; gi < RECIP_ROM_N; gi++) begin : g_recip
+    localparam logic [RECIP_W-1:0] RECIP_V = recip_rom(RECIP_IDX_W'(gi));
+    assign recip_tab[gi] = RECIP_V;
+  end
+
   // Only the 8 bits below the leading one are needed: bit 16 of the normalised
   // denominator is 1 by construction, and the bits below the index are what
   // the ROM's bucket width discards.
@@ -87,7 +102,19 @@ module feature_engine
   logic [RECIP_W-1:0]     recip1;
   assign sh1    = norm_shift(den);
   assign idx1   = RECIP_IDX_W'((den << sh1) >> 8);
-  assign recip1 = recip_rom(idx1);
+  assign recip1 = recip_tab[idx1];
+
+  // The numerator is normalised by the same shift, here in stage 1, so that
+  // stage 2 shifts by a constant instead of by (16 - sh):
+  //
+  //   (num * recip) >>> (16 - sh)  ==  ((num << sh) * recip) >>> 16
+  //
+  // exactly, for 0 <= sh <= 16, because multiplying by 2**sh loses nothing and
+  // both sides floor the same quotient. |num| <= den and den << sh < 2**17, so
+  // num << sh needs one bit more than num and never overflows it.
+  localparam int NUMN_W = DEN_W + 1;
+  logic signed [NUMN_W-1:0] numn1;
+  assign numn1 = $signed({num1[DEN_W-1], num1}) <<< sh1;
 
   // -------------------------------------------------------------------
   // Pipeline control: both stages move together, no skid.
@@ -105,20 +132,19 @@ module feature_engine
   logic               empty1_r;
   logic signed [SPREAD_W-1:0] spread1_r;
   logic        [PRICE_W-1:0]  mid1_r;
-  logic signed [DEN_W-1:0]    num1_r;
+  logic signed [NUMN_W-1:0]   numn1_r;
   logic [RECIP_W-1:0]         recip1_r;
-  int unsigned                sh1_r;
 
   // -------------------------------------------------------------------
   // Stage 2 combinational: imbalance and momentum
   // -------------------------------------------------------------------
   // imb = num * 2**IMB_FRAC_W / den, and with recip ~= 2**30 / (den << sh)
-  // that reduces to (num * recip) >>> (16 - sh). IMB_FRAC_W is 14, which is
-  // where the 30 and the 16 come from; the assertion below pins that.
-  localparam int IMB_PROD_W = DEN_W + RECIP_W + 1;
+  // that reduces to ((num << sh) * recip) >>> 16. IMB_FRAC_W is 14, which is
+  // where the 30 and the 16 come from.
+  localparam int IMB_PROD_W = NUMN_W + RECIP_W + 1;
   logic signed [IMB_PROD_W-1:0] prod2, shifted2;
-  assign prod2    = num1_r * $signed({1'b0, recip1_r});
-  assign shifted2 = prod2 >>> (16 - sh1_r);
+  assign prod2    = numn1_r * $signed({1'b0, recip1_r});
+  assign shifted2 = prod2 >>> 16;
 
   logic signed [IMB_W-1:0] imb2;
   always_comb begin
@@ -153,7 +179,7 @@ module feature_engine
     if (!rst_n) begin
       v1 <= 1'b0; v2 <= 1'b0;
       ev1 <= '0; er1 <= '0; stale1 <= 1'b0; empty1_r <= 1'b0;
-      spread1_r <= '0; mid1_r <= '0; num1_r <= '0; recip1_r <= '0; sh1_r <= 0;
+      spread1_r <= '0; mid1_r <= '0; numn1_r <= '0; recip1_r <= '0;
       m_valid <= 1'b0; m_event <= '0; m_err <= '0; m_feat <= '0;
       for (int i = 0; i < N_SYMBOLS; i++) begin
         prev_mid[i]   <= '0;
@@ -168,9 +194,8 @@ module feature_engine
       empty1_r  <= empty1;
       spread1_r <= spread1;
       mid1_r    <= mid1;
-      num1_r    <= num1;
+      numn1_r   <= numn1;
       recip1_r  <= recip1;
-      sh1_r     <= sh1;
 
       // stage 2
       v2      <= v1;

@@ -345,6 +345,8 @@ def main() -> None:
     p.add_argument("--n", type=int, default=1000)
     p.add_argument("--seed", type=int, required=True)
     p.add_argument("--out", type=Path, default=Path("tb/traces/random"))
+    p.add_argument("--mem", type=Path,
+                   help="write ONLY a $readmemh ROM image to this path")
     p.add_argument("--gap-rate", type=float, default=0.05)
     p.add_argument("--stale-rate", type=float, default=0.03)
     p.add_argument("--bad-type-rate", type=float, default=0.02)
@@ -370,6 +372,12 @@ def main() -> None:
                       a.bad_side_rate, a.bad_rsv_rate, a.start_seq,
                       a.price_levels, a.hit_rate, a.zero_qty_rate,
                       a.big_qty_rate)
+    if a.mem:
+        a.mem.parent.mkdir(parents=True, exist_ok=True)
+        nibbles = EVENT_W // 4
+        a.mem.write_text("".join(f"{e['word']:0{nibbles}x}\n" for e in events))
+        print(f"wrote {a.n} events to {a.mem} (seed={a.seed})")
+        return
     write_trace(events, a.out)
     print(f"wrote {a.n} events to {a.out}.hex and {a.out}_expected.csv "
           f"(seed={a.seed})")

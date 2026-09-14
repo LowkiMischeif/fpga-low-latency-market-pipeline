@@ -25,3 +25,6 @@ tb/traces/*.csv
 
 # Agent-local reviewer notes, not project source
 .claude/agent-memory/
+
+# Vivado writes this into the working directory during report_timing_summary
+tight_setup_hold_pins.txt

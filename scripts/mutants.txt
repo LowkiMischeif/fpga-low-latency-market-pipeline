@@ -15,7 +15,11 @@ feat: mid not halved @@ rtl/feature_engine.sv @@ tb_feature_engine @@ s_book.ask
 feat: divide-by-zero not folded into empty @@ rtl/feature_engine.sv @@ tb_feature_engine @@ assign empty1 = !both_sides || (den == '0); @@ assign empty1 = !both_sides;
 feat: spread back on split gating @@ rtl/feature_engine.sv @@ tb_feature_engine @@   assign spread1 = empty1 @@   assign spread1 = !both_sides
 feat: mid back on split gating @@ rtl/feature_engine.sv @@ tb_feature_engine @@   assign mid1 = empty1 @@   assign mid1 = !both_sides
-feat: wrong reciprocal shift @@ rtl/feature_engine.sv @@ tb_feature_engine @@ prod2 >>> (16 - sh1_r) @@ prod2 >>> (15 - sh1_r)
+feat: wrong reciprocal shift @@ rtl/feature_engine.sv @@ tb_feature_engine @@ assign shifted2 = prod2 >>> 16; @@ assign shifted2 = prod2 >>> 15;
+feat: numerator not normalised @@ rtl/feature_engine.sv @@ tb_feature_engine @@ assign numn1 = $signed({num1[DEN_W-1], num1}) <<< sh1; @@ assign numn1 = $signed({num1[DEN_W-1], num1});
+feat: normalised numerator not sign-extended @@ rtl/feature_engine.sv @@ tb_feature_engine @@ assign numn1 = $signed({num1[DEN_W-1], num1}) <<< sh1; @@ assign numn1 = $signed({1'b0, num1}) <<< sh1;
+feat: normalised numerator one bit short @@ rtl/feature_engine.sv @@ tb_feature_engine @@ localparam int NUMN_W = DEN_W + 1; @@ localparam int NUMN_W = DEN_W;
+feat: reciprocal table indexed off by one @@ rtl/feature_engine.sv @@ tb_feature_engine @@ assign recip1 = recip_tab[idx1]; @@ assign recip1 = recip_tab[idx1 + 1'b1];
 feat: imbalance high clamp removed @@ rtl/feature_engine.sv @@ tb_feature_engine @@ else if (shifted2 >  IMB_PROD_W'(IMB_ONE))      imb2 =  IMB_W'(IMB_ONE); @@ else if (1'b0) imb2 = IMB_W'(IMB_ONE);
 feat: imbalance low clamp removed @@ rtl/feature_engine.sv @@ tb_feature_engine @@ else if (shifted2 < -IMB_PROD_W'(IMB_ONE))      imb2 = -IMB_W'(IMB_ONE); @@ else if (1'b0) imb2 = -IMB_W'(IMB_ONE);
 feat: momentum ignores prev_valid @@ rtl/feature_engine.sv @@ tb_feature_engine @@ (empty1_r || !pv) @@ (empty1_r)
@@ -61,18 +65,24 @@ pol-snap: risk limits read live @@ rtl/policy_engine.sv @@ tb_policy_engine @@  
 # observable property -- an empty book yields RSN_BOOK_EMPTY, never RSN_SPREAD.
 risk: empty book not rejected @@ rtl/risk_gate.sv @@ tb_risk_gate @@ else if (s_feat.book_empty)  reason_c = RSN_BOOK_EMPTY; @@ else if (1'b0)              reason_c = RSN_BOOK_EMPTY;
 risk: kill switch ignored @@ rtl/risk_gate.sv @@ tb_risk_gate @@ else if (cfg.kill)           reason_c = RSN_KILL; @@ else if (1'b0)               reason_c = RSN_KILL;
-risk: max long not enforced @@ rtl/risk_gate.sv @@ tb_risk_gate @@ assign over_long  = (s_decision == DEC_BUY)  && (next_pos > lim_long); @@ assign over_long  = 1'b0;
-risk: max short not enforced @@ rtl/risk_gate.sv @@ tb_risk_gate @@ assign over_short = (s_decision == DEC_SELL) && (next_pos < lim_short); @@ assign over_short = 1'b0;
+risk: max long not enforced @@ rtl/risk_gate.sv @@ tb_risk_gate @@ assign over_long  = (s_decision == DEC_BUY)  && (pos_plus > lim_long); @@ assign over_long  = 1'b0;
+risk: max short not enforced @@ rtl/risk_gate.sv @@ tb_risk_gate @@ assign over_short = (s_decision == DEC_SELL) && (pos_minus < lim_short); @@ assign over_short = 1'b0;
 # The mutant has to put the unsigned expression INLINE in the comparison. A
 # declared `logic signed` variable carries its own signedness, so merely
 # changing how lim_short is computed stores the same bits and reads back the
 # same value -- that version of this mutant was a no-op and survived for that
 # reason, not because the suite was weak.
-risk: short limit compared unsigned @@ rtl/risk_gate.sv @@ tb_risk_gate @@ assign over_short = (s_decision == DEC_SELL) && (next_pos < lim_short); @@ assign over_short = (s_decision == DEC_SELL) && (next_pos < -POS_W'({1'b0, cfg.max_short}));
-risk: long limit compared unsigned @@ rtl/risk_gate.sv @@ tb_risk_gate @@ assign over_long  = (s_decision == DEC_BUY)  && (next_pos > lim_long); @@ assign over_long  = (s_decision == DEC_BUY)  && (next_pos > POS_W'({1'b0, cfg.max_long}));
+risk: short limit compared unsigned @@ rtl/risk_gate.sv @@ tb_risk_gate @@ assign over_short = (s_decision == DEC_SELL) && (pos_minus < lim_short); @@ assign over_short = (s_decision == DEC_SELL) && (pos_minus < -POS_W'({1'b0, cfg.max_short}));
+risk: long limit compared unsigned @@ rtl/risk_gate.sv @@ tb_risk_gate @@ assign over_long  = (s_decision == DEC_BUY)  && (pos_plus > lim_long); @@ assign over_long  = (s_decision == DEC_BUY)  && (pos_plus > POS_W'({1'b0, cfg.max_long}));
 risk: sequence flags ignored @@ rtl/risk_gate.sv @@ tb_risk_gate @@ else if (seq_bad)            reason_c = RSN_SEQUENCE; @@ else if (1'b0)               reason_c = RSN_SEQUENCE;
 risk: malformed flags ignored @@ rtl/risk_gate.sv @@ tb_risk_gate @@ else if (malformed)          reason_c = RSN_MALFORMED; @@ else if (1'b0)               reason_c = RSN_MALFORMED;
-risk: rejected trade still moves position @@ rtl/risk_gate.sv @@ tb_risk_gate @@ assign pos_c = (decision_c == DEC_BUY)  ? (position + qty_ext) @@ assign pos_c = (s_decision == DEC_BUY)  ? (position + qty_ext)
+risk: rejected trade still moves position @@ rtl/risk_gate.sv @@ tb_risk_gate @@ assign pos_c = (decision_c == DEC_BUY)  ? POS_W'(pos_plus) @@ assign pos_c = (s_decision == DEC_BUY)  ? POS_W'(pos_plus)
+# The precomputed sums (critical-path iteration 2) add ways to pick the wrong
+# one or extend it wrongly; each is killed today and pinned here for later edits.
+risk: SELL limit checks pos_plus @@ rtl/risk_gate.sv @@ tb_risk_gate @@ && (pos_minus < lim_short); @@ && (pos_plus < lim_short);
+risk: SELL position update uses pos_plus @@ rtl/risk_gate.sv @@ tb_risk_gate @@ ? POS_W'(pos_minus) @@ ? POS_W'(pos_plus)
+risk: order qty sign-extended @@ rtl/risk_gate.sv @@ tb_risk_gate @@ POS_W'({1'b0, s_order_qty}) @@ POS_W'($signed(s_order_qty))
+risk: pos_minus zero-extends position @@ rtl/risk_gate.sv @@ tb_risk_gate @@ CHK_W'(position) - @@ CHK_W'($unsigned(position)) -
 risk: max order qty not enforced @@ rtl/risk_gate.sv @@ tb_risk_gate @@ else if (s_order_qty > cfg.max_order_qty) reason_c = RSN_MAX_QTY; @@ else if (1'b0) reason_c = RSN_MAX_QTY;
 
 == config_regs ==
@@ -88,3 +98,66 @@ lat: feature_engine collapsed to one cycle @@ rtl/feature_engine.sv @@ tb_fixed_
 risk: position check wraps at POS_W @@ rtl/risk_gate.sv @@ tb_risk_gate @@ localparam int CHK_W = POS_W + 1; @@ localparam int CHK_W = POS_W;
 risk: policy HOLD still gets a reason @@ rtl/risk_gate.sv @@ tb_risk_gate @@ if      (s_decision == DEC_HOLD) reason_c = RSN_NONE; @@ if      (1'b0)                  reason_c = RSN_NONE;
 cfg-indep: a config bit reaches the stall path @@ rtl/policy_engine.sv @@ tb_policy_configs @@ assign advance = m_ready || !v2; @@ assign advance = (m_ready || !v2) && !(cfg.w_spread[10] && v2);
+
+== reset_sync ==
+rst: release through one flop @@ rtl/reset_sync.sv @@ tb_reset_sync @@   assign rst_n = stage2; @@   assign rst_n = stage1;
+rst: synchronous assert @@ rtl/reset_sync.sv @@ tb_reset_sync @@   always_ff @(posedge clk or posedge arst_in) begin @@   always_ff @(posedge clk) begin
+
+== replay_ctrl ==
+replay: address does not run ahead @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@   assign rom_addr = (accept && !last) ? (idx + 1'b1) : idx; @@   assign rom_addr = idx;
+replay: press accepted mid-replay @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@ (lockout == '0) && !busy && !hold_off; @@ (lockout == '0) && !hold_off;
+replay: lockout ignored @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@ assign press  = b2 && !b_prev && (lockout == '0) && !busy && !hold_off; @@ assign press  = b2 && !b_prev && !busy && !hold_off;
+replay: hold_off ignored @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@ && !busy && !hold_off; @@ && !busy;
+replay: last word dropped @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@   assign last   = (idx == AW'(N_TRACE - 1)); @@   assign last   = (idx == AW'(N_TRACE - 2));
+replay: stale ROM word presented before priming @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@   assign s_valid  = busy && primed; @@   assign s_valid  = busy;
+# NOT LISTED: "replay: press is level-sensitive". It survived before the
+# held-button test, and that test killed it -- but since the lockout reloads on
+# every cycle the button reads high, lockout == '0 can only hold on the first
+# high cycle, so b2 && lockout == '0 is the edge detect. The mutant is now
+# equivalent to the RTL; tb_replay_ctrl still pins one replay per held press.
+# Survived: event_decoder captures on s_ready alone, so a source that drives
+# garbage while stalled changes no decision. Killed by stream_source_checker.
+replay: s_data not held while stalled @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@   assign s_data   = rom_data; @@   assign s_data   = s_ready ? rom_data : '0;
+# Killed before, but only if the xorshift ready happened to stall on the last
+# word; the directed last-word stall now pins it regardless of the seed.
+replay: last word dropped under a stall @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@         end else if (accept) begin @@         end else if (accept || last) begin
+replay: a new press does not restart idx @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@ busy <= 1'b1; idx <= '0; primed <= 1'b0; @@ busy <= 1'b1; primed <= 1'b0;
+replay: start_pulse lasts two cycles @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@       start_pulse <= 1'b0; @@       start_pulse <= busy && !primed;
+# Killed only by the release-bounce vector: a press outlasts the lockout.
+replay: lockout restarts only at the press (release bounce) @@ rtl/replay_ctrl.sv @@ tb_replay_ctrl @@       if (b2)                  lockout <= '1; @@       if (press)               lockout <= '1;
+
+== cfg_loader ==
+cfgl: switch change does not reload @@ rtl/cfg_loader.sv @@ tb_cfg_loader @@ assign start_load = !loading && (!loaded || (s2 != preset)); @@ assign start_load = !loading && !loaded;
+cfgl: presets swapped @@ rtl/cfg_loader.sv @@ tb_cfg_loader @@ assign word = preset ? rom_tuned[idx] : rom_base[idx]; @@ assign word = preset ? rom_base[idx] : rom_tuned[idx];
+cfgl: final write (the commit) skipped @@ rtl/cfg_loader.sv @@ tb_cfg_loader @@ if (idx == ($clog2(N_CFG))'(N_CFG - 1)) begin @@ if (idx == ($clog2(N_CFG))'(N_CFG - 2)) begin
+cfgl: busy drops before the last write lands @@ rtl/cfg_loader.sv @@ tb_cfg_loader @@ assign busy = start_load || loading || cfg_we; @@ assign busy = start_load || loading;
+# The next two survived: the switch only ever changed while the loader was
+# idle. Each commits a mixed image.
+cfgl: image read from the live switch (mixed commit) @@ rtl/cfg_loader.sv @@ tb_cfg_loader @@ assign word = preset ? rom_tuned[idx] : rom_base[idx]; @@ assign word = s2 ? rom_tuned[idx] : rom_base[idx];
+cfgl: preset follows the switch mid-load @@ rtl/cfg_loader.sv @@ tb_cfg_loader @@         cfg_we    <= 1'b1; @@         cfg_we    <= 1'b1; preset <= s2;
+# NOT LISTED: "cfgl: busy gap between back-to-back loads". It survived the
+# suite before the mid-load test and was killed by it -- while busy was
+# loading || cfg_we. busy now also includes start_load, so the gap cannot open
+# by construction: in the cycle the mutant blocks start_load, cfg_we holds busy
+# high, and start_load holds it the cycle after. The mutant only starts the
+# second load one cycle later -- observable on cfg_we/cfg_addr, but required by
+# nothing, so no test pins it. Not equivalent; not a gap in any requirement.
+# The interlock with the replay, both directions.
+cfgl: busy ignores a deferred load @@ rtl/cfg_loader.sv @@ tb_cfg_loader @@ assign busy = start_load || loading || cfg_we; @@ assign busy = loading || cfg_we;
+cfgl: load not deferred by hold_off @@ rtl/cfg_loader.sv @@ tb_cfg_loader @@ if (start_load && !hold_off) begin @@ if (start_load) begin
+
+== seg7_display ==
+seg7: digit 3 decodes as 8 @@ rtl/seg7_display.sv @@ tb_seg7_display @@ 4'h3: seg = 7'b0110000; @@ 4'h3: seg = 7'b0000000;
+seg7: anodes 0 and 1 swapped @@ rtl/seg7_display.sv @@ tb_seg7_display @@ 2'd0: begin an = 4'b1110; nib = value[3:0];   end @@ 2'd0: begin an = 4'b1101; nib = value[3:0];   end
+# Survived: nothing checked the scan period, only which digit each anode shows.
+seg7: scan runs at the clock rate @@ rtl/seg7_display.sv @@ tb_seg7_display @@ assign digit = ctr[REFRESH_W-1 -: 2]; @@ assign digit = ctr[1:0];
+
+== market_pipeline_top ==
+top: BUY and SELL counters swapped @@ rtl/market_pipeline_top.sv @@ tb_market_pipeline_top @@ if (r_decision.decision == DEC_BUY)  buy_cnt  <= buy_cnt  + 1'b1; @@ if (r_decision.decision == DEC_SELL) buy_cnt  <= buy_cnt  + 1'b1;
+top: replay not held off while config loads @@ rtl/market_pipeline_top.sv @@ tb_market_pipeline_top @@ .btn(btnC), .hold_off(cfg_busy), @@ .btn(btnC), .hold_off(1'b0),
+top: counters not cleared on a new replay @@ rtl/market_pipeline_top.sv @@ tb_market_pipeline_top @@ end else if (start_pulse) begin @@ end else if (1'b0) begin
+top: preset switch not wired @@ rtl/market_pipeline_top.sv @@ tb_market_pipeline_top @@ .sw_preset(sw[0]), @@ .sw_preset(1'b0),
+top: loader not held off by a replay @@ rtl/market_pipeline_top.sv @@ tb_market_pipeline_top @@ .hold_off(replay_busy), @@ .hold_off(1'b0),
+# Survived: counters are X until the first start_pulse and nothing looked at
+# the LEDs across a reset. The first match is the reset branch.
+top: counters not cleared by reset @@ rtl/market_pipeline_top.sv @@ tb_market_pipeline_top @@ buy_cnt <= '0; sell_cnt <= '0; rej_cnt <= '0; @@ buy_cnt <= buy_cnt; sell_cnt <= sell_cnt; rej_cnt <= rej_cnt;

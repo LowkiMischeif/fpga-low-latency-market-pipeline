@@ -12,7 +12,7 @@ TB      := $(wildcard tb/*.sv)
 TOP       ?= tb_market_pipeline_top
 SYNTH_TOP ?= market_pipeline_top
 
-.PHONY: all lint lint-tb sim sim-all build pytest trace clean
+.PHONY: all lint lint-tb sim sim-all build fmax pytest trace mem clean
 all: lint lint-tb pytest
 
 # Package must lead the file list: market_pkg.sv defines every width/enum/struct.
@@ -93,8 +93,21 @@ sim-all: trace
 	    PLUSARGS="HEX=$(TRACEOUT).hex NEVENTS=$(NEVENTS)" || exit 1
 	@echo "== sim-all passed: $(TB_TOPS) (+ generated-trace replay)"
 
+# PERIOD overrides the clock only for the Fmax sweep; the board runs at 10.000.
+# RUN names the results/ subdirectory a passing build publishes to.
+# PUBLISH_FAILED=1 also publishes a run that fails the gate, stamped
+# GATE_FAILED.md instead of BUILD_SCOPE.md -- for keeping a "before" record.
+PERIOD         ?= 10.000
+RUN            ?= 100mhz
+PUBLISH_FAILED ?= 0
 build:
-	$(VIVADO) -mode batch -notrace -source scripts/build.tcl -tclargs $(SYNTH_TOP)
+	$(VIVADO) -mode batch -notrace -source scripts/build.tcl \
+	    -tclargs "$(SYNTH_TOP)" "$(PERIOD)" "$(RUN)" "$(PUBLISH_FAILED)"
+
+# Measure the fastest period that closes. Slow: one full implementation per
+# step. SWEEP names the result set (default results/sweep/).
+fmax:
+	scripts/fmax_sweep.sh
 
 pytest:
 	$(PYTHON) -m pytest -q
@@ -111,6 +124,15 @@ TRACEOUT ?= tb/traces/random
 trace:
 	$(PYTHON) scripts/generate_events.py --n $(NEVENTS) --seed $(SEED) \
 	    --start-seq $(STARTSEQ) --out $(TRACEOUT)
+
+# ROM images baked into the bitstream. Regenerate after changing the trace
+# seed or either committed config; scripts/test_mem_files.py fails if these
+# drift from what the tools produce.
+MEM_DIR := rtl/mem
+mem:
+	$(PYTHON) scripts/generate_events.py --n 2000 --seed 1 --mem $(MEM_DIR)/rom_trace.mem
+	$(PYTHON) scripts/export_config.py tb/configs/baseline.json --mem $(MEM_DIR)/rom_cfg_baseline.mem
+	$(PYTHON) scripts/export_config.py tb/configs/tuned.json --mem $(MEM_DIR)/rom_cfg_tuned.mem
 
 clean:
 	rm -rf build/ xsim.dir/ .Xil/ *.jou *.log *.pb *.wdb obj_dir/

@@ -1,0 +1,4 @@
+events        2000
+distribution  {8: 2000}
+min/mean/max  8 / 8 / 8 cycles
+latency is fixed at 8 cycles
