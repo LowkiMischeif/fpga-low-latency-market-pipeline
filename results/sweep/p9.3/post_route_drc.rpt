@@ -1,14 +1,14 @@
 Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 | Tool Version : Vivado v.2026.1 (lin64) Build 6511674 Tue Jun 16 11:01:26 MDT 2026
-| Date         : Sun Sep 13 20:23:23 2026
+| Date         : Sun Sep 13 20:55:19 2026
 | Host         : Loki running 64-bit Ubuntu 26.04 LTS
-| Command      : report_drc -file /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/sweepwt/build/sweep/p9.3/reports/post_route_drc.rpt
+| Command      : report_drc -file /tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/sweepwt2/build/sweep/p9.3/reports/post_route_drc.rpt
 | Design       : market_pipeline_top
 | Device       : xc7a35tcpg236-1
 | Speed File   : -1
 | Design State : Fully Routed
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 Report DRC
 
