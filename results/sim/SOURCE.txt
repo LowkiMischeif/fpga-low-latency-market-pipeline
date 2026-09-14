@@ -1,5 +1,5 @@
 commit 6cebc73
-tracked files modified: 1
+tracked files modified outside results/sim: 0
 mutation.txt: captured at 1dfcba9 and carried forward. Between 1dfcba9 and this commit:
   rtl/ files changed: 0
   scripts/mutate.sh changed: 0
