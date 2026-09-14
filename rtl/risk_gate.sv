@@ -46,34 +46,42 @@ module risk_gate
   assign malformed = s_err.bad_type || s_err.bad_side || s_err.bad_rsv;
   assign seq_bad   = s_err.gap || s_err.stale;
 
-  // Prospective position if this decision were allowed through.
+  // Prospective positions if a BUY or a SELL were allowed through.
   //
   // Computed one bit WIDER than the position. POS_W holds the limit magnitude
   // in POS_W-1 bits, but position + order can exceed that: at max_long =
-  // 2**23-1 with a 65535-lot order the sum wraps negative, `next_pos >
+  // 2**23-1 with a 65535-lot order the sum wraps negative, `pos_plus >
   // lim_long` reads false, and the limit FAILS OPEN -- the one failure mode
   // this module exists to prevent. Both the sum and the limits are compared at
   // CHK_W so the comparison cannot wrap.
   localparam int CHK_W = POS_W + 1;
 
+  //
+  // Both prospective positions are computed unconditionally, straight from
+  // registers, and every later use selects between them. Selecting the addend
+  // by s_decision first, then adding, comparing, and adding AGAIN for the new
+  // position put three carry chains in series behind the decision register:
+  // WNS -0.071 ns at 100 MHz (results/iter1_100mhz/GATE_FAILED.md). pos_plus
+  // and pos_minus are exactly the sums the old next_pos selected, and the
+  // position update is their low POS_W bits -- bit-identical to position +/-
+  // qty_ext at POS_W -- so no decision, reason or position changes.
   logic signed [POS_W-1:0] qty_ext;
-  logic signed [CHK_W-1:0] next_pos;
-  assign qty_ext  = POS_W'({1'b0, s_order_qty});
-  assign next_pos = (s_decision == DEC_BUY)  ? (CHK_W'(position) + CHK_W'(qty_ext))
-                  : (s_decision == DEC_SELL) ? (CHK_W'(position) - CHK_W'(qty_ext))
-                  :                             CHK_W'(position);
+  logic signed [CHK_W-1:0] pos_plus, pos_minus;
+  assign qty_ext   = POS_W'({1'b0, s_order_qty});
+  assign pos_plus  = CHK_W'(position) + CHK_W'(qty_ext);
+  assign pos_minus = CHK_W'(position) - CHK_W'(qty_ext);
 
   // The limits are held in SIGNED variables on purpose. Written inline as
   // POS_W'({1'b0, cfg.max_long}) the right-hand side is unsigned, and SV then
-  // evaluates the whole comparison unsigned -- a negative next_pos reads as a
+  // evaluates the whole comparison unsigned -- a negative pos_plus/pos_minus reads as a
   // huge positive number and the long limit fires on a short position.
   logic signed [CHK_W-1:0] lim_long, lim_short;
   assign lim_long  =  CHK_W'($signed({1'b0, cfg.max_long}));
   assign lim_short = -CHK_W'($signed({1'b0, cfg.max_short}));
 
   logic over_long, over_short;
-  assign over_long  = (s_decision == DEC_BUY)  && (next_pos > lim_long);
-  assign over_short = (s_decision == DEC_SELL) && (next_pos < lim_short);
+  assign over_long  = (s_decision == DEC_BUY)  && (pos_plus > lim_long);
+  assign over_short = (s_decision == DEC_SELL) && (pos_minus < lim_short);
 
   // Only a real book can be too wide. A negative spread is a crossed book,
   // which is tighter than any positive limit, not wider.
@@ -109,8 +117,8 @@ module risk_gate
 
   // The position only moves on a decision that actually got out.
   logic signed [POS_W-1:0] pos_c;
-  assign pos_c = (decision_c == DEC_BUY)  ? (position + qty_ext)
-               : (decision_c == DEC_SELL) ? (position - qty_ext)
+  assign pos_c = (decision_c == DEC_BUY)  ? POS_W'(pos_plus)
+               : (decision_c == DEC_SELL) ? POS_W'(pos_minus)
                :                             position;
 
   assign s_ready = m_ready || !m_valid;

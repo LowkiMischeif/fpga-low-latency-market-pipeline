@@ -65,18 +65,24 @@ pol-snap: risk limits read live @@ rtl/policy_engine.sv @@ tb_policy_engine @@  
 # observable property -- an empty book yields RSN_BOOK_EMPTY, never RSN_SPREAD.
 risk: empty book not rejected @@ rtl/risk_gate.sv @@ tb_risk_gate @@ else if (s_feat.book_empty)  reason_c = RSN_BOOK_EMPTY; @@ else if (1'b0)              reason_c = RSN_BOOK_EMPTY;
 risk: kill switch ignored @@ rtl/risk_gate.sv @@ tb_risk_gate @@ else if (cfg.kill)           reason_c = RSN_KILL; @@ else if (1'b0)               reason_c = RSN_KILL;
-risk: max long not enforced @@ rtl/risk_gate.sv @@ tb_risk_gate @@ assign over_long  = (s_decision == DEC_BUY)  && (next_pos > lim_long); @@ assign over_long  = 1'b0;
-risk: max short not enforced @@ rtl/risk_gate.sv @@ tb_risk_gate @@ assign over_short = (s_decision == DEC_SELL) && (next_pos < lim_short); @@ assign over_short = 1'b0;
+risk: max long not enforced @@ rtl/risk_gate.sv @@ tb_risk_gate @@ assign over_long  = (s_decision == DEC_BUY)  && (pos_plus > lim_long); @@ assign over_long  = 1'b0;
+risk: max short not enforced @@ rtl/risk_gate.sv @@ tb_risk_gate @@ assign over_short = (s_decision == DEC_SELL) && (pos_minus < lim_short); @@ assign over_short = 1'b0;
 # The mutant has to put the unsigned expression INLINE in the comparison. A
 # declared `logic signed` variable carries its own signedness, so merely
 # changing how lim_short is computed stores the same bits and reads back the
 # same value -- that version of this mutant was a no-op and survived for that
 # reason, not because the suite was weak.
-risk: short limit compared unsigned @@ rtl/risk_gate.sv @@ tb_risk_gate @@ assign over_short = (s_decision == DEC_SELL) && (next_pos < lim_short); @@ assign over_short = (s_decision == DEC_SELL) && (next_pos < -POS_W'({1'b0, cfg.max_short}));
-risk: long limit compared unsigned @@ rtl/risk_gate.sv @@ tb_risk_gate @@ assign over_long  = (s_decision == DEC_BUY)  && (next_pos > lim_long); @@ assign over_long  = (s_decision == DEC_BUY)  && (next_pos > POS_W'({1'b0, cfg.max_long}));
+risk: short limit compared unsigned @@ rtl/risk_gate.sv @@ tb_risk_gate @@ assign over_short = (s_decision == DEC_SELL) && (pos_minus < lim_short); @@ assign over_short = (s_decision == DEC_SELL) && (pos_minus < -POS_W'({1'b0, cfg.max_short}));
+risk: long limit compared unsigned @@ rtl/risk_gate.sv @@ tb_risk_gate @@ assign over_long  = (s_decision == DEC_BUY)  && (pos_plus > lim_long); @@ assign over_long  = (s_decision == DEC_BUY)  && (pos_plus > POS_W'({1'b0, cfg.max_long}));
 risk: sequence flags ignored @@ rtl/risk_gate.sv @@ tb_risk_gate @@ else if (seq_bad)            reason_c = RSN_SEQUENCE; @@ else if (1'b0)               reason_c = RSN_SEQUENCE;
 risk: malformed flags ignored @@ rtl/risk_gate.sv @@ tb_risk_gate @@ else if (malformed)          reason_c = RSN_MALFORMED; @@ else if (1'b0)               reason_c = RSN_MALFORMED;
-risk: rejected trade still moves position @@ rtl/risk_gate.sv @@ tb_risk_gate @@ assign pos_c = (decision_c == DEC_BUY)  ? (position + qty_ext) @@ assign pos_c = (s_decision == DEC_BUY)  ? (position + qty_ext)
+risk: rejected trade still moves position @@ rtl/risk_gate.sv @@ tb_risk_gate @@ assign pos_c = (decision_c == DEC_BUY)  ? POS_W'(pos_plus) @@ assign pos_c = (s_decision == DEC_BUY)  ? POS_W'(pos_plus)
+# The precomputed sums (critical-path iteration 2) add ways to pick the wrong
+# one or extend it wrongly; each is killed today and pinned here for later edits.
+risk: SELL limit checks pos_plus @@ rtl/risk_gate.sv @@ tb_risk_gate @@ && (pos_minus < lim_short); @@ && (pos_plus < lim_short);
+risk: SELL position update uses pos_plus @@ rtl/risk_gate.sv @@ tb_risk_gate @@ ? POS_W'(pos_minus) @@ ? POS_W'(pos_plus)
+risk: order qty sign-extended @@ rtl/risk_gate.sv @@ tb_risk_gate @@ POS_W'({1'b0, s_order_qty}) @@ POS_W'($signed(s_order_qty))
+risk: pos_minus zero-extends position @@ rtl/risk_gate.sv @@ tb_risk_gate @@ CHK_W'(position) - @@ CHK_W'($unsigned(position)) -
 risk: max order qty not enforced @@ rtl/risk_gate.sv @@ tb_risk_gate @@ else if (s_order_qty > cfg.max_order_qty) reason_c = RSN_MAX_QTY; @@ else if (1'b0) reason_c = RSN_MAX_QTY;
 
 == config_regs ==
