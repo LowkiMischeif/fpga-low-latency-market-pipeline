@@ -17,9 +17,10 @@
 # strictly monotonic in the period -- placement varies -- so the bisection
 # assumes it, FMAX.md says so, and summary.csv is the evidence if it is not.
 #
-# The result is a fabric ceiling for this design on xc7a35tcpg236-1. The Basys
-# 3 has a fixed 100 MHz oscillator and no MMCM here; anything faster is not
-# usable on the board.
+# The result is the fastest passing period this one-run-per-period search found
+# on xc7a35tcpg236-1 -- not a proven ceiling, since a tighter target can still
+# route faster. The Basys 3 has a fixed 100 MHz oscillator and no MMCM here;
+# anything faster is not usable on the board.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 # SWEEP names the result set, so a later iteration can sweep again without
@@ -97,7 +98,9 @@ if [ -n "$fail" ]; then
     mid=$(( (lo + hi) / 2 ))
     if run "$mid"; then hi=$mid; best=$mid; else lo=$mid; fi
   done
-  fail_txt="fastest failing period tried: $(fmt "$lo") ns"
+  # lo is the failing period next to the passing one: the SLOWEST period that
+  # failed, not the fastest (faster ones failed too).
+  fail_txt="slowest failing period tried: $(fmt "$lo") ns"
 else
   fail_txt="no failing period found down to $(fmt "$best") ns"
 fi
@@ -116,10 +119,12 @@ $SOURCE (identical for every run in this sweep)
   steps from 10.0 ns, then bisection on a 0.1 ns grid. Each point is
   synthesized and implemented against its own period. Every run is listed in
   summary.csv and published under p<period>/.
-- The bisection assumes closure is monotonic in the period. Placement varies
-  between periods, so that is an assumption, not a guarantee.
+- This is the fastest passing period this search found, not a proven ceiling:
+  placement varies between periods, a tighter target can still route faster
+  (period minus WNS in summary.csv), and the bisection assumes closure is
+  monotonic in the period.
 - **Not usable on the Basys 3.** The board oscillator is fixed at 100 MHz and the
-  design has no MMCM; this is a fabric ceiling for this design on xc7a35tcpg236-1.
+  design has no MMCM.
 - The p10.0 run is an ordinary board-period build (it writes a bitstream).
 EOF
 echo "== measured Fmax $fmax MHz at $(fmt "$best") ns (see $SUMMARY)"
