@@ -1,0 +1,5 @@
+both configurations share one latency distribution
+events        4000
+distribution  {8: 4000}
+min/mean/max  8 / 8 / 8 cycles
+latency is fixed at 8 cycles
