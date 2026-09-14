@@ -1,11 +1,11 @@
-vivado -mode batch -notrace -source scripts/run_sim.tcl -tclargs tb_fixed_latency 
+vivado -mode batch -notrace -source scripts/run_sim.tcl -tclargs tb_risk_gate_equiv 
 INFO: [Common 17-3922] A valid Vivado Design Suite BASIC license has been detected. Your current license is active and will expire on 10-sep-2027.
 
 ****** Vivado v2026.1 (64-bit)
   **** SW Build 6511674 on Tue Jun 16 11:01:26 MDT 2026
   **** IP Build 6504888 on Tue Jun 09 09:05:25 MDT 2026
   **** SharedData Build 6501428 on Mon Jun 08 17:34:18 MDT 2026
-  **** Start of session at: Sun Sep 13 21:14:52 2026
+  **** Start of session at: Sun Sep 13 21:15:16 2026
     ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
     ** Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
 
@@ -81,72 +81,49 @@ INFO: [VRFC 10-311] analyzing module tb_sequence_checker
 INFO: [VRFC 10-2263] Analyzing SystemVerilog file "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_top_of_book.sv" into library work
 INFO: [VRFC 10-311] analyzing module tb_top_of_book
 == xelab ==
-   xelab -debug typical -relax -s tb_fixed_latency_snap tb_fixed_latency
+   xelab -debug typical -relax -s tb_risk_gate_equiv_snap tb_risk_gate_equiv
 Vivado Simulator v2026.1
 Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
 Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
-Running: /home/lokibuns/Xilinx/2026.1/Vivado/bin/unwrapped/lnx64.o/xelab -debug typical -relax -s tb_fixed_latency_snap tb_fixed_latency 
+Running: /home/lokibuns/Xilinx/2026.1/Vivado/bin/unwrapped/lnx64.o/xelab -debug typical -relax -s tb_risk_gate_equiv_snap tb_risk_gate_equiv 
 Multi-threading is on. Using 14 slave threads.
 WARNING: [XSIM 43-3431] One or more environment variables have been detected which affect the operation of the C compiler. These are typically not set in standard installations and are not tested by AMD, however they may be appropriate for your system, so the flow will attempt to continue.  If errors occur, try running xelab with the "-mt off -v 1" switches to see more information from the C compiler. The following environment variables have been detected:
     LIBRARY_PATH
 Starting static elaboration
 Pass Through NonSizing Optimizer
-WARNING: [VRFC 10-3818] variable 'lat_min' is driven by invalid combination of procedural drivers [/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_fixed_latency.sv:147]
-WARNING: [VRFC 10-2921] 'lat_min' driven by this always_ff block should not be driven by any other process [/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_fixed_latency.sv:187]
-WARNING: [VRFC 10-3818] variable 'cov_buy' is driven by invalid combination of procedural drivers [/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_fixed_latency.sv:152]
-WARNING: [VRFC 10-3818] variable 'cov_two_sided' is driven by invalid combination of procedural drivers [/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_fixed_latency.sv:151]
-WARNING: [VRFC 10-3818] variable 'measured' is driven by invalid combination of procedural drivers [/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_fixed_latency.sv:182]
-WARNING: [VRFC 10-3818] variable 'errors' is driven by invalid combination of procedural drivers [/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_fixed_latency.sv:184]
 Completed static elaboration
 Starting simulation data flow analysis
 Completed simulation data flow analysis
 Time Resolution for simulation is 1ps
 Compiling package work.market_pkg
 Compiling module work.handshake_checker(TAG_W=16,PAY_W...
-Compiling module work.event_decoder
-Compiling module work.sequence_checker_default
-Compiling module work.handshake_checker(TAG_W=16,PAY_W...
-Compiling module work.top_of_book
-Compiling module work.handshake_checker(LATENCY=2,TAG_...
-Compiling module work.feature_engine_default
-Compiling module work.handshake_checker(LATENCY=2,TAG_...
-Compiling module work.policy_engine_default
-Compiling module work.handshake_checker(TAG_W=16,PAY_W...
 Compiling module work.risk_gate_default
-Compiling module work.config_regs
-Compiling module work.tb_fixed_latency
-Built simulation snapshot tb_fixed_latency_snap
+Compiling module work.risk_gate_pre_iter2_default
+Compiling module work.tb_risk_gate_equiv
+Built simulation snapshot tb_risk_gate_equiv_snap
 == xsim ==
-   xsim tb_fixed_latency_snap -R --maxlogsize 64
+   xsim tb_risk_gate_equiv_snap -R --maxlogsize 64
 
 ****** xsim v2026.1 (64-bit)
   **** SW Build 6511674 on Tue Jun 16 11:01:26 MDT 2026
   **** IP Build 6504888 on Tue Jun 09 09:05:25 MDT 2026
   **** SharedData Build 6501428 on Mon Jun 08 17:34:18 MDT 2026
-  **** Start of session at: Sun Sep 13 21:14:57 2026
+  **** Start of session at: Sun Sep 13 21:15:20 2026
     ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
     ** Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
 
-source xsim.dir/tb_fixed_latency_snap/xsim_script.tcl
-# xsim {tb_fixed_latency_snap} -maxlogsize 64 -autoloadwcfg -runall
+source xsim.dir/tb_risk_gate_equiv_snap/xsim_script.tcl
+# xsim {tb_risk_gate_equiv_snap} -maxlogsize 64 -autoloadwcfg -runall
 Time resolution is 1 ps
 run -all
-INFO: seed=1 LATENCY_CYCLES=8 (decode 1 + seq 1 + book 1 + feat 2 + policy 2 + risk 1)
-INFO: latency histogram (cycles: count)
-INFO:   8: 2000
-INFO: latency min=8 mean=8 max=8 over 2000 events
-INFO: 8 cycles x 10.0 ns = 80 ns core pipeline latency, on the
-INFO: Basys 3's fixed 100 MHz oscillator. This is ARITHMETIC, NOT a
-INFO: synthesis result -- there is no market_pipeline_top and no
-INFO: measured WNS anywhere in this repo. Do not quote it as timing.
-INFO: classification mix gap=155 stale=1218 bad=307 (latency must be independent of these)
-INFO: datapath coverage two_sided=1413 imbalance!=0=1413 momentum!=0=53 spread!=0=1413
-INFO: decisions buy=342 sell=39 hold=1619 rejected=1027 commits=1
-PASS: tb_fixed_latency -- 2000 events, min=mean=max=8 cycles, seed=1
-$finish called at time : 32845 ns : File "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_fixed_latency.sv" Line 381
+INFO: 62373 accepted events, 129336 cycles compared, 0 mismatches
+INFO: coverage -- within one max order of the long limit 348, of the short limit 567; buys past 2**23-1 116; MAX_LONG 931; MAX_SHORT 1476
+INFO: planted off-by-one copy differed on 127558 cycles
+PASS: tb_risk_gate_equiv -- 62373 events, 0 mismatches against the pre-change risk_gate; planted defect detected
+$finish called at time : 1293380 ns : File "/tmp/claude-1000/-home-lokibuns-fpga-low-latency-market-pipeline/c91c9539-6dd1-4d78-bec1-ea2a8e700c43/scratchpad/simcap3/tb/tb_risk_gate_equiv.sv" Line 410
 exit
-INFO: xsimkernel Simulation Memory Usage: 298860 KB (Peak: 343580 KB), Simulation CPU Usage: 560 ms
-INFO: [Common 17-206] Exiting xsim at Sun Sep 13 21:14:59 2026...
+INFO: xsimkernel Simulation Memory Usage: 298476 KB (Peak: 343196 KB), Simulation CPU Usage: 940 ms
+INFO: [Common 17-206] Exiting xsim at Sun Sep 13 21:15:22 2026...
 
-== sim complete: tb_fixed_latency ==
-INFO: [Common 17-206] Exiting Vivado at Sun Sep 13 21:14:59 2026...
+== sim complete: tb_risk_gate_equiv ==
+INFO: [Common 17-206] Exiting Vivado at Sun Sep 13 21:15:22 2026...
